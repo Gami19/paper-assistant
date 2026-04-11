@@ -21,10 +21,27 @@ npm run dev
 
 | 変数 | 公開範囲 | 説明 |
 |------|----------|------|
-| `NEXT_PUBLIC_API_BASE_URL` | ブラウザ可 | バックエンド API の基底 URL |
+| `NEXT_PUBLIC_API_BASE_URL` | ブラウザ可 | バックエンド API の基底 URL（末尾スラッシュの有無は正規化される） |
 | `ADMIN_COST_DASHBOARD_SECRET` 等 | **サーバのみ** | `NEXT_PUBLIC_` **禁止**。Route Handler からのみ参照（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)） |
 
 本番では [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) に同じキー名で登録する。
+
+## API 型・契約の正（FE-1 / effective-typescript）
+
+- **`GET /health` の JSON 契約**は **`lib/api/health.ts` の Zod スキーマ**を唯一の正とする（別ファイルで同じ形を手書きしない）。
+- バックエンドの応答形を変える場合は、**FastAPI・pytest・上記 Zod**を同じ PR で更新する。
+
+## バックエンド疎通（M1）
+
+1. FastAPI を起動（例: `http://127.0.0.1:8000`）。ルートの `backend/README.md` を参照。
+2. `frontend/.env.local` に `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` を設定。
+3. `npm run dev` でトップページを開き、「バックエンド接続」が成功することを確認。
+
+本番相当では、Vercel の `NEXT_PUBLIC_API_BASE_URL` に Railway（等）の API 公開 URL を設定する。
+
+### CORS について（FE-1 の範囲外）
+
+現状、トップページの疎通確認は **Next.js サーバー（RSC）から `fetch` する**ため、ブラウザの CORS は発生しない。**クライアントコンポーネントから API を直接叩く**場合は FastAPI 側の CORS 設定が必要になる。FE-2 以降でクライアント API が増えるタイミングでバックエンド（BE-1）とセットで検討する。
 
 ## 品質ゲート
 
