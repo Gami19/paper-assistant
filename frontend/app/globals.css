@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (ui-design スキル準拠の方針)
+ * - Spacing: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 / 96 / 128 px 相当
+ * - Color: 3 層 — Primary（ブランド） / Neutral（本文・背景） / Semantic（成功・警告・危険）
+ * Tailwind からは @theme で参照（CSS Variables を正とする）
+ */
+
+:root {
+  /* --- Spacing scale (rem = 16px root) --- */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
+  --space-24: 6rem; /* 96px */
+  --space-32: 8rem; /* 128px */
+
+  /* --- Primary (落ち着いた青系・学術トーン) --- */
+  --primary-900: hsl(205 100% 21%);
+  --primary-700: hsl(205 82% 33%);
+  --primary-600: hsl(205 67% 40%);
+  --primary-500: hsl(205 67% 45%);
+  --primary-300: hsl(205 84% 74%);
+  --primary-100: hsl(205 79% 92%);
+
+  /* --- Neutrals (blue-grey) --- */
+  --neutral-900: hsl(209 61% 16%);
+  --neutral-700: hsl(209 34% 30%);
+  --neutral-600: hsl(210 22% 40%);
+  --neutral-500: hsl(210 22% 49%);
+  --neutral-300: hsl(210 31% 80%);
+  --neutral-100: hsl(210 36% 96%);
+  --neutral-50: hsl(210 40% 98%);
+
+  /* --- Semantic --- */
+  --semantic-danger: hsl(0 72% 51%);
+  --semantic-warning: hsl(38 92% 50%);
+  --semantic-success: hsl(152 69% 36%);
+  --semantic-info: hsl(205 67% 45%);
+
+  /* --- Surfaces (light) --- */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --muted-foreground: var(--neutral-600);
+  --border-subtle: var(--neutral-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: hsl(209 61% 10%);
+    --foreground: var(--neutral-100);
+    --muted-foreground: var(--neutral-300);
+    --border-subtle: var(--neutral-700);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-primary-100: var(--primary-100);
+  --color-primary-300: var(--primary-300);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-900: var(--primary-900);
+
+  --color-neutral-50: var(--neutral-50);
+  --color-neutral-100: var(--neutral-100);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-500: var(--neutral-500);
+  --color-neutral-600: var(--neutral-600);
+  --color-neutral-700: var(--neutral-700);
+  --color-neutral-900: var(--neutral-900);
+
+  --color-semantic-danger: var(--semantic-danger);
+  --color-semantic-warning: var(--semantic-warning);
+  --color-semantic-success: var(--semantic-success);
+  --color-semantic-info: var(--semantic-info);
+
+  --spacing-paper-1: var(--space-1);
+  --spacing-paper-2: var(--space-2);
+  --spacing-paper-3: var(--space-3);
+  --spacing-paper-4: var(--space-4);
+  --spacing-paper-6: var(--space-6);
+  --spacing-paper-8: var(--space-8);
+  --spacing-paper-12: var(--space-12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}

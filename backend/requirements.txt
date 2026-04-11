@@ -1,0 +1,4 @@
+# Python 3.13 / Railway 本番インストール用（開発ツールは requirements-dev.txt）
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0

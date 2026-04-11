@@ -1,0 +1,9 @@
+.DS_Store
+
+# Secrets at repo root (if any)
+.env
+.env.local
+.env.*.local
+
+# Cursor ローカル設定（リポジトリに含めない場合）
+.cursor

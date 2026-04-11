@@ -1,0 +1,16 @@
+[project]
+name = "paper-assistant-backend"
+version = "0.1.0"
+description = "FastAPI backend for paper-assistant (personal verification phase)"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+
+[tool.pyright]
+include = ["app", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+# venvPath / venv はマシン依存になるためコミットしない。CLI で --pythonpath を渡す（scripts/run-pyright.sh 参照）。
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
