@@ -39,9 +39,9 @@ npm run dev
 
 本番相当では、Vercel の `NEXT_PUBLIC_API_BASE_URL` に Railway（等）の API 公開 URL を設定する。
 
-### CORS について（FE-1 の範囲外）
+### CORS について
 
-現状、トップページの疎通確認は **Next.js サーバー（RSC）から `fetch` する**ため、ブラウザの CORS は発生しない。**クライアントコンポーネントから API を直接叩く**場合は FastAPI 側の CORS 設定が必要になる。FE-2 以降でクライアント API が増えるタイミングでバックエンド（BE-1）とセットで検討する。
+トップページの疎通（FE-1）は **Next.js サーバー（RSC）から `fetch` する**ため、ブラウザの CORS は発生しない。**クライアントから API を直接叩く**場合は、バックエンドで `CORS_ALLOW_ORIGINS` にフロントのオリジンを載せる（[backend/README.md](../backend/README.md)・[ADR-005](../docs/adr/ADR-005-cors-allowlist.md)）。FE-2 以降でその経路を増やすときに両リポジトリの環境変数を揃える。
 
 ## 品質ゲート
 
