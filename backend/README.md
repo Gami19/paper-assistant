@@ -34,6 +34,15 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 `cp .env.example .env` して編集。README や `.env.example` に **実値・秘密を書かない**。
 
+### BE-1（疎通・CORS）
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `ENVIRONMENT` | いいえ | `development`（既定）または `production`。`production` のとき `/docs`・`/redoc` を無効化。 |
+| `CORS_ALLOW_ORIGINS` | **production では必須** | 許可するブラウザのオリジンを **カンマ区切り**（例: `https://xxx.vercel.app,http://localhost:3000`）。空のときは **CORS ミドルウェアを付けない**（Next.js サーバーからの `fetch` のみで足りる場合）。 |
+
+`ENVIRONMENT=production` かつ `CORS_ALLOW_ORIGINS` が空だと **起動時に失敗**する（設定ミス検出）。詳細は [ADR-005](../docs/adr/ADR-005-cors-allowlist.md)。
+
 ## Railway（use-railway）
 
 | 項目 | 推奨 |
@@ -41,6 +50,11 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | **Root Directory** | `backend` |
 | **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT`（環境に合わせて調整） |
 | **Build** | `pip install -r requirements.txt`（本番は dev 不要） |
+| **Healthcheck Path** | `/health`（Railway サービス設定の HTTP healthcheck と整合） |
+
+**Variables（本番例）**: `ENVIRONMENT=production`、`CORS_ALLOW_ORIGINS=https://<your-vercel-app>.vercel.app`（プレビュー URL を使う場合はカンマで追加）。変更後は `railway variable list --json` 等で読み戻し確認（[実装計画.md](../docs/実装計画.md) §5.4）。
+
+**デプロイ後の確認**: `curl -sS https://<railway-public-url>/health` で `{"status":"ok",...}` を確認。失敗時は **`railway logs`** でビルド失敗とランタイム失敗を切り分ける。
 
 **命名**: プロジェクト名はリポジトリ名 `paper-assistant` に揃え、サービス名は `backend` または `api` など **1 環境 1 役割**で短く保つ。複数サービス時は `railway logs --service <name>` で取り違えないよう、ダッシュボード URL の **Project / Service ID を正**とする（[use-railway スキル](../.cursor/skills/use-railway/SKILL.md)）。
 
