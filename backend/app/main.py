@@ -12,3 +12,9 @@ app = FastAPI(title="paper-assistant", version="0.1.0")
 def read_root() -> dict[str, str]:
     """BE-0 プレースホルダ。BE-1 で /health 等と整理する。"""
     return {"service": "paper-assistant", "phase": "BE-0"}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """M1 疎通・監視用。フロント契約は frontend/lib/api/health.ts の Zod と整合させる。"""
+    return {"status": "ok", "service": "paper-assistant"}
