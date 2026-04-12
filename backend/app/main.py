@@ -6,6 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import chat
 from app.settings import Settings
 
 
@@ -18,6 +19,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url=None if openapi_disabled else "/docs",
         redoc_url=None if openapi_disabled else "/redoc",
     )
+    app.state.settings = settings
 
     origins = settings.cors_origin_list()
     if origins:
@@ -25,7 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=origins,
             allow_credentials=False,
-            allow_methods=["GET", "OPTIONS"],
+            allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Accept", "Content-Type", "Authorization"],
         )
 
@@ -38,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         """M1 疎通・監視・Railway Healthcheck。フロント契約は frontend/lib/api/health.ts と整合。"""
         return {"status": "ok", "service": "paper-assistant"}
+
+    app.include_router(chat.router)
 
     return app
 

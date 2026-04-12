@@ -26,9 +26,10 @@ npm run dev
 
 本番では [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) に同じキー名で登録する。
 
-## API 型・契約の正（FE-1 / effective-typescript）
+## API 型・契約の正（FE-1 / FE-2 / effective-typescript）
 
 - **`GET /health` の JSON 契約**は **`lib/api/health.ts` の Zod スキーマ**を唯一の正とする（別ファイルで同じ形を手書きしない）。
+- **`POST /v1/chat` の JSON 契約**は **`lib/api/chat.ts` の Zod スキーマ**を唯一の正とする。
 - バックエンドの応答形を変える場合は、**FastAPI・pytest・上記 Zod**を同じ PR で更新する。
 
 ## バックエンド疎通（M1）
@@ -39,9 +40,14 @@ npm run dev
 
 本番相当では、Vercel の `NEXT_PUBLIC_API_BASE_URL` に Railway（等）の API 公開 URL を設定する。
 
+## チャット試用（M2 / FE-2）
+
+1. バックエンドで `CHAT_MOCK_MODE=true`（または実 Bedrock 設定）と、ブラウザ経由なら `CORS_ALLOW_ORIGINS` に `http://localhost:3000` 等を含める。
+2. `NEXT_PUBLIC_API_BASE_URL` を設定したうえでトップページの「試しに 1 往復」から送信し、アシスタント文が表示されることを確認する。
+
 ### CORS について
 
-トップページの疎通（FE-1）は **Next.js サーバー（RSC）から `fetch` する**ため、ブラウザの CORS は発生しない。**クライアントから API を直接叩く**場合は、バックエンドで `CORS_ALLOW_ORIGINS` にフロントのオリジンを載せる（[backend/README.md](../backend/README.md)・[ADR-005](../docs/adr/ADR-005-cors-allowlist.md)）。FE-2 以降でその経路を増やすときに両リポジトリの環境変数を揃える。
+トップページの **ヘルス（FE-1）** は **Next.js サーバー（RSC）から `fetch` する**ため、ブラウザの CORS は発生しない。**チャット試用（FE-2）** は **クライアントから API を直接 `POST` する**ため、バックエンドの `CORS_ALLOW_ORIGINS` にフロントのオリジン（例: `http://localhost:3000`）を含め、`allow_methods` に `POST` が含まれる必要がある（[backend/README.md](../backend/README.md)・[ADR-005](../docs/adr/ADR-005-cors-allowlist.md)）。
 
 ## 品質ゲート
 

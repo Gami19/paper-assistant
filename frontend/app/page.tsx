@@ -1,4 +1,5 @@
 import { BackendHealthCard } from "@/app/components/backend-health-card";
+import { ChatTryPanel } from "@/app/components/chat-try-panel";
 import { fetchBackendHealth } from "@/lib/api/health";
 
 /** 疎通はリクエストごとに取り直す（ビルド時の URL に固定しない） */
@@ -11,7 +12,7 @@ export default async function Home() {
     <div className="flex min-h-full flex-col bg-background">
       <main className="mx-auto flex w-full max-w-prose flex-col gap-paper-8 px-paper-4 py-paper-12">
         <header className="border-b border-border-subtle pb-paper-6">
-          <p className="text-sm text-muted-foreground">paper-assistant / FE-1（M1 疎通）</p>
+          <p className="text-sm text-muted-foreground">paper-assistant / FE-2（M2 AI 表示）</p>
           <h1 className="mt-paper-2 text-2xl font-semibold tracking-tight text-foreground">
             論文読解アシスタント
           </h1>
@@ -24,6 +25,7 @@ export default async function Home() {
           を参照してください。
         </p>
         <BackendHealthCard result={health} />
+        <ChatTryPanel apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL} />
       </main>
     </div>
   );

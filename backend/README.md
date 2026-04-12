@@ -4,7 +4,7 @@ FastAPI バックエンド。Railway デプロイ想定。**Python 3.13** 専用
 
 ## レイヤリング（拡張方針）
 
-**HTTP 境界（ルータ・スキーマ）** → **ユースケース／ドメイン** → **外部クライアント（Bedrock・S3 等）** の依存方向を保つ。コスト用 Billing／集計の HTTP API は **ここに置かない**（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)）。
+**HTTP 境界（ルータ・スキーマ）** → **ユースケース（`app/services/`）** → **ポート（`app/ports/` の Protocol）** → **インフラ（`app/infrastructure/`）** の依存方向を保つ。コスト用 Billing／集計の HTTP API は **ここに置かない**（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)）。
 
 ## セットアップ（ローカル）
 
@@ -43,6 +43,30 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 `ENVIRONMENT=production` かつ `CORS_ALLOW_ORIGINS` が空だと **起動時に失敗**する（設定ミス検出）。詳細は [ADR-005](../docs/adr/ADR-005-cors-allowlist.md)。
 
+### BE-2（M2 チャット最小）
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `CHAT_MOCK_MODE` | いいえ | `true` のとき Bedrock を呼ばず `[mock] …` 形式で応答。**`ENVIRONMENT=production` では `true` 禁止**（起動失敗）。 |
+| `AWS_REGION` | いいえ | Bedrock クライアント用リージョン（既定 `ap-northeast-1`）。 |
+| `BEDROCK_MODEL_ID` | **production でモック OFF のとき必須** | 例: `anthropic.claude-3-5-haiku-20241022-v1:0`。空のまま本番・非モックだと起動失敗。 |
+| `BEDROCK_CONNECT_TIMEOUT_SECONDS` | いいえ | boto3 の接続タイムアウト秒（既定 `10`、1〜300）。 |
+| `BEDROCK_READ_TIMEOUT_SECONDS` | いいえ | boto3 の読み取りタイムアウト秒（既定 `120`、1〜600）。長文推論では増やす余地あり。 |
+
+**エンドポイント**: `POST /v1/chat` — リクエスト JSON は `{ "messages": [ { "role": "user", "content": "…" } ] }`（他ロールもスキーマ上は可）、レスポンスは `{ "role": "assistant", "content": "…" }`。プロンプト全文はログに出さない。
+
+**ローカル E2E（モック）**:
+
+1. `.env` に `CHAT_MOCK_MODE=true`、フロントからブラウザ直 `fetch` する場合は `CORS_ALLOW_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`。
+2. `uvicorn` 起動後:  
+   `curl -sS -X POST http://127.0.0.1:8000/v1/chat -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"hello"}]}'`
+
+**実 Bedrock**: `CHAT_MOCK_MODE=false`（または未設定）にし、**`AWS_REGION`**（またはアプリ既定）と **`BEDROCK_MODEL_ID`** を設定する。認証は **boto3 の IAM（SigV4）標準チェーン**を前提とする: 本番は **IAM ロール**（推奨）、ローカルは **`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`**（必要なら `AWS_SESSION_TOKEN`）または **`AWS_PROFILE`**。補足として Bedrock の **API キー** `AWS_BEARER_TOKEN_BEDROCK` も SDK が解釈する場合がある（[公式](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html)）。**コンソール Quickstart の `OPENAI_API_KEY` + `OPENAI_BASE_URL`（OpenAI 互換 Mantle）は本アプリ未使用**（`bedrock-runtime` の `Converse` を直接呼ぶため）。詳細は `backend/.env.example`。失敗時はクライアントへ汎用メッセージ（502）。**サーバーログ**に `error_code`・`region`・`model_id`・AWS の短い `aws_message` を出す（プロンプト本文はログに出さない）。タイムアウトは上記 `BEDROCK_*_TIMEOUT` で調整。
+
+**POST /v1/chat が 502 のとき（ローカル）**: ログ行 `bedrock_converse_client_error` の **`error_code`** を見る。例: **`AccessDeniedException`** → IAM に `bedrock:Converse`（およびモデル・リージョンに応じたリソース）を付与する。[マネージドポリシー例](https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html)。**`ValidationException`** → `BEDROCK_MODEL_ID` がそのリージョンで無効な ID になっていないか確認。**モデル利用申請**が未完了のリージョン／モデルでは利用できない場合がある（[モデルアクセス](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)）。**フロントの `NEXT_PUBLIC_API_BASE_URL`** は API のホスト（例: `http://127.0.0.1:8000`）。**`CORS_ALLOW_ORIGINS`** にはブラウザのオリジン（例: `http://localhost:3000`）を含める。`OPTIONS 200` で `POST 502` なら CORS は通っており、原因は Bedrock 側が多い。
+
+**リトライ**: 現状は SDK 既定の挙動に任せる。指数バックオフ等を集約する場合は ADR に方針を残してから実装する。
+
 ## Railway（use-railway）
 
 | 項目 | 推奨 |
@@ -62,7 +86,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 | ファイル | 用途 |
 |----------|------|
-| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic） |
+| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic / boto3） |
 | `requirements-dev.txt` | 開発（pytest / httpx / pyright） |
 
 ## 参照
