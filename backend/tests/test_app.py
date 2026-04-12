@@ -83,6 +83,8 @@ def test_production_accepts_non_empty_cors_allow_origins() -> None:
     s = Settings(
         environment="production",
         cors_allow_origins="https://app.example.com",
+        bedrock_model_id="anthropic.claude-3-5-haiku-20241022-v1:0",
+        chat_mock_mode=False,
     )
     assert s.cors_origin_list() == ["https://app.example.com"]
 
@@ -93,6 +95,19 @@ def test_options_preflight_allowed_origin(client_cors_localhost: TestClient) -> 
         headers={
             "Origin": "http://127.0.0.1:3000",
             "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://127.0.0.1:3000"
+
+
+def test_options_preflight_post_chat_allowed(client_cors_localhost: TestClient) -> None:
+    response = client_cors_localhost.options(
+        "/v1/chat",
+        headers={
+            "Origin": "http://127.0.0.1:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
         },
     )
     assert response.status_code == 200
