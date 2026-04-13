@@ -17,6 +17,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // pdf.js アセット（postinstall で生成。ADR-006）
+    "public/pdf.worker.min.mjs",
+    "public/standard_fonts/**",
+    "public/wasm/**",
+    "public/cmaps/**",
   ]),
 ]);
 

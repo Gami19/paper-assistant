@@ -40,10 +40,16 @@ npm run dev
 
 本番相当では、Vercel の `NEXT_PUBLIC_API_BASE_URL` に Railway（等）の API 公開 URL を設定する。
 
+## 論文読解 UI（M3 / FE-3）
+
+1. **`npm install`** 時に **postinstall** で `pdfjs-dist` から **`pdf.worker.min.mjs`** と **`standard_fonts/`**・**`wasm/`**・**`cmaps/`** を `public/` にコピーする（[ADR-006](../docs/adr/ADR-006-pdf-viewer-react-pdf.md)）。`react-pdf` の `<Document options={…}>` でこれらの URL を参照する。**生成物は `.gitignore` 対象**のため、クローン後は必ず `npm install` を実行すること。
+2. 既定の **`public/sample.pdf`** は最小限の 1 ページ PDF。差し替え可。
+3. 開発サーバーで **[http://localhost:3000/read](http://localhost:3000/read)** を開き、**PDF を主表示・チャットを右（狭い画面では下）** に確認する。
+
 ## チャット試用（M2 / FE-2）
 
 1. バックエンドで `CHAT_MOCK_MODE=true`（または実 Bedrock 設定）と、ブラウザ経由なら `CORS_ALLOW_ORIGINS` に `http://localhost:3000` 等を含める。
-2. `NEXT_PUBLIC_API_BASE_URL` を設定したうえでトップページの「試しに 1 往復」から送信し、アシスタント文が表示されることを確認する。
+2. `NEXT_PUBLIC_API_BASE_URL` を設定したうえでトップページの「試しに 1 往復」、または **`/read`** の補助チャットから送信し、アシスタント文が表示されることを確認する。
 
 ### CORS について
 

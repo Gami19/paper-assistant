@@ -79,9 +79,11 @@ function errorHelpText(state: Extract<UiState, { phase: "error" }>): string {
 
 type Props = {
   apiBaseUrl: string | undefined;
+  /** 論文読解レイアウトの右パネル用（高さ・見出しを調整） */
+  variant?: "full" | "sidebar";
 };
 
-export function ChatTryPanel({ apiBaseUrl }: Props) {
+export function ChatTryPanel({ apiBaseUrl, variant = "full" }: Props) {
   const [input, setInput] = useState("");
   const [ui, setUi] = useState<UiState>({ phase: "idle" });
   const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,28 +129,45 @@ export function ChatTryPanel({ apiBaseUrl }: Props) {
 
   const isSending = ui.phase === "sending";
 
+  const isSidebar = variant === "sidebar";
+
   return (
     <section
-      className="rounded-lg border border-border-subtle bg-neutral-50 p-paper-6 dark:bg-neutral-900/40"
+      className={
+        isSidebar
+          ? "flex h-full min-h-[min(40vh,24rem)] flex-col border-0 bg-neutral-50 p-paper-4 dark:bg-neutral-900/40 lg:min-h-0"
+          : "rounded-lg border border-border-subtle bg-neutral-50 p-paper-6 dark:bg-neutral-900/40"
+      }
       aria-labelledby="chat-try-heading"
     >
       <h2
         id="chat-try-heading"
-        className="text-lg font-semibold tracking-tight text-foreground"
+        className={`font-semibold tracking-tight text-foreground ${isSidebar ? "text-base" : "text-lg"}`}
       >
-        試しに 1 往復（FE-2 / M2）
+        {isSidebar ? "チャット（補助）" : "試しに 1 往復（FE-2 / M2）"}
       </h2>
       <p className="mt-paper-2 text-sm text-muted-foreground">
-        ブラウザから <code className="font-mono text-foreground">POST /v1/chat</code>{" "}
-        を呼び出します。CORS と <code className="font-mono text-foreground">CHAT_MOCK_MODE</code>{" "}
-        の設定が必要です。
+        {isSidebar ? (
+          <>
+            読みながら質問する用（F1-2 接続予定）。{" "}
+            <code className="font-mono text-foreground">POST /v1/chat</code>
+          </>
+        ) : (
+          <>
+            ブラウザから <code className="font-mono text-foreground">POST /v1/chat</code>{" "}
+            を呼び出します。CORS と <code className="font-mono text-foreground">CHAT_MOCK_MODE</code>{" "}
+            の設定が必要です。
+          </>
+        )}
       </p>
 
-      <div className="mt-paper-4 flex flex-col gap-paper-4">
-        <label className="flex flex-col gap-paper-2">
+      <div
+        className={`mt-paper-4 flex min-h-0 flex-1 flex-col gap-paper-4 ${isSidebar ? "overflow-y-auto" : ""}`}
+      >
+        <label className="flex min-h-0 flex-1 flex-col gap-paper-2">
           <span className="text-sm font-medium text-foreground">メッセージ</span>
           <textarea
-            className="min-h-[6rem] rounded-md border border-border-subtle bg-background px-paper-3 py-paper-2 text-sm text-foreground outline-none ring-primary-500 focus-visible:ring-2"
+            className={`min-h-[6rem] rounded-md border border-border-subtle bg-background px-paper-3 py-paper-2 text-sm text-foreground outline-none ring-primary-500 focus-visible:ring-2 ${isSidebar ? "min-h-[5rem] flex-1 lg:min-h-[8rem]" : ""}`}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={isSending}
@@ -160,7 +179,7 @@ export function ChatTryPanel({ apiBaseUrl }: Props) {
         <div className="flex flex-wrap gap-paper-3">
           <button
             type="button"
-            className="rounded-md bg-primary-600 px-paper-4 py-paper-2 text-sm font-medium text-white hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:opacity-50"
+            className="min-h-11 rounded-md bg-primary-600 px-paper-4 py-paper-2 text-sm font-medium text-white hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:opacity-50"
             onClick={() => void send()}
             disabled={isSending || !input.trim()}
           >
@@ -168,7 +187,7 @@ export function ChatTryPanel({ apiBaseUrl }: Props) {
           </button>
           <button
             type="button"
-            className="rounded-md border border-border-subtle bg-background px-paper-4 py-paper-2 text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:opacity-50"
+            className="min-h-11 rounded-md border border-border-subtle bg-background px-paper-4 py-paper-2 text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:opacity-50"
             onClick={clearInput}
             disabled={isSending}
           >
