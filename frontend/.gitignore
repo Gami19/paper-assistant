@@ -43,6 +43,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# FE-4 運用コストの JSON 永続化（ローカル・本番サーバーのみ）
+.data/
+
 # pdf.js アセット（postinstall で node_modules からコピー。ADR-006）
 /public/pdf.worker.min.mjs
 /public/standard_fonts/
