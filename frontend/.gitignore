@@ -42,3 +42,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# pdf.js アセット（postinstall で node_modules からコピー。ADR-006）
+/public/pdf.worker.min.mjs
+/public/standard_fonts/
+/public/wasm/
+/public/cmaps/
