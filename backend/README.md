@@ -67,6 +67,34 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 **リトライ**: 現状は SDK 既定の挙動に任せる。指数バックオフ等を集約する場合は ADR に方針を残してから実装する。
 
+### BE-3（M3 論文 PDF）
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `PAPERS_STORAGE_DIR` | いいえ | PDF 保管ディレクトリ。未設定・空なら `backend/data/papers`。 |
+| `PAPER_MAX_UPLOAD_BYTES` | いいえ | アップロード最大サイズ（既定約 20MB、1024〜128MB）。 |
+| `PAPER_FETCH_ENABLED` | いいえ | `false` のとき `POST /v1/papers/fetch` は **403**。**本番では `false` 推奨**（公開 SSRF 面の低減）。 |
+| `PAPER_FETCH_TIMEOUT_SECONDS` | いいえ | fetch のタイムアウト（既定 30、1〜120）。 |
+| `PAPER_FETCH_MAX_BYTES` | いいえ | fetch 応答ボディ上限（既定約 20MB）。 |
+| `PAPER_FETCH_HOST_ALLOWLIST` | いいえ | 空=HTTPS・IP 検査のみ。非空=カンマ区切りの許可ホスト（サフィックス一致）。 |
+| `PAPER_GC_MAX_AGE_SECONDS` | いいえ | 保存成功後に **これより古い mtime の `*.pdf` を削除**（既定 86400 秒）。 |
+
+**エンドポイント**:
+
+- `POST /v1/papers/upload` — `multipart/form-data`、フィールド名 **`file`**。成功時 `{ "paper_id", "filename", "size_bytes" }`。
+- `GET /v1/papers/{paper_id}/file` — `application/pdf`（`paper_id` は UUID）。
+- `POST /v1/papers/fetch` — JSON `{ "url": "https://..." }`。**リダイレクトは追従しない**（[ADR-007](../docs/adr/ADR-007-be3-paper-pdf-local-storage.md)）。
+
+**ローカル curl（アップロード→取得）**:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/v1/papers/upload -F "file=@/path/to/paper.pdf"
+# 返却 JSON の paper_id を使う
+curl -sS -o out.pdf http://127.0.0.1:8000/v1/papers/<paper_id>/file
+```
+
+**Railway**: ローカルディスクは **エフェメラル**（再起動で PDF は消える）。S3 等への移行は別 ADR。
+
 ## Railway（use-railway）
 
 | 項目 | 推奨 |
@@ -86,7 +114,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 | ファイル | 用途 |
 |----------|------|
-| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic / boto3） |
+| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic / httpx / python-multipart / boto3） |
 | `requirements-dev.txt` | 開発（pytest / httpx / pyright） |
 
 ## 参照

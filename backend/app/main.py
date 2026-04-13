@@ -6,7 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import chat
+from app.routers import chat, papers
 from app.settings import Settings
 
 
@@ -42,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "service": "paper-assistant"}
 
     app.include_router(chat.router)
+    app.include_router(papers.router)
 
     return app
 
