@@ -1,10 +1,14 @@
-"""型付き環境設定。BE-1: CORS と実行環境。BE-2: Bedrock / チャットモック。"""
+"""型付き環境設定。BE-1: CORS と実行環境。BE-2: Bedrock / チャットモック。BE-3: 論文 PDF 保管。"""
 
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_papers_storage_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "data" / "papers"
 
 
 def _load_backend_dotenv_into_environ() -> None:
@@ -50,6 +54,54 @@ class Settings(BaseSettings):
         le=600,
         description="Bedrock boto3 read timeout (seconds)",
     )
+
+    # --- BE-3（M3 論文 PDF）---
+    papers_storage_dir: Path = Field(
+        default_factory=_default_papers_storage_dir,
+        description="Directory for stored paper PDFs ({uuid}.pdf)",
+    )
+    paper_max_upload_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1024,
+        le=128 * 1024 * 1024,
+        description="Max bytes for upload and fetch body",
+    )
+    paper_fetch_enabled: bool = Field(
+        default=True,
+        description="When false, POST /v1/papers/fetch returns 403",
+    )
+    paper_fetch_timeout_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=120.0,
+        description="HTTP timeout for paper fetch (seconds)",
+    )
+    paper_fetch_max_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1024,
+        le=128 * 1024 * 1024,
+        description="Max response body size for fetch",
+    )
+    paper_fetch_host_allowlist: str = Field(
+        default="",
+        description="Comma-separated host suffixes; empty = only scheme/IP checks",
+    )
+    paper_gc_max_age_seconds: int = Field(
+        default=86400,
+        ge=60,
+        le=86400 * 365,
+        description="Delete stored PDFs older than this (mtime) after successful store",
+    )
+
+    @field_validator("papers_storage_dir", mode="before")
+    @classmethod
+    def papers_dir_from_str(cls, v: object) -> object:
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return _default_papers_storage_dir()
+            return Path(stripped).expanduser()
+        return v
 
     @model_validator(mode="after")
     def production_requires_cors_origins(self) -> Self:
