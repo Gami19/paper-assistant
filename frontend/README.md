@@ -22,9 +22,30 @@ npm run dev
 | 変数 | 公開範囲 | 説明 |
 |------|----------|------|
 | `NEXT_PUBLIC_API_BASE_URL` | ブラウザ可 | バックエンド API の基底 URL（末尾スラッシュの有無は正規化される） |
-| `ADMIN_COST_DASHBOARD_SECRET` 等 | **サーバのみ** | `NEXT_PUBLIC_` **禁止**。Route Handler からのみ参照（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)） |
+| `COST_ADMIN_BEARER` | **サーバのみ** | 運用コスト API（`GET`/`PUT`）と `/admin/cost` の保存で共用。`NEXT_PUBLIC_` **禁止**（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)） |
+| `COST_DATA_FILE` | **サーバのみ** | 任意。コスト JSON の保存パス。未設定時は `frontend/.data/cost-state.json`（`.gitignore` 対象） |
 
 本番では [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) に同じキー名で登録する。
+
+## 運用コスト管理（FE-4 / F4-3 第 1 段階）
+
+1. `.env.local` に `COST_ADMIN_BEARER` を**推測困難な値**で設定し、開発サーバーを再起動する。
+2. ブラウザで **[http://localhost:3000/admin/cost](http://localhost:3000/admin/cost)** を開く（メインナビからはリンクしていません。URL の推測を難しくするため、ブックマークまたは README のみで共有してください）。
+3. 画面上部のトークン欄に、`.env.local` と同じ値を入力し、各カードの月額（USD）・メモを編集して「保存」する。
+
+**curl 例**（ベース URL とトークンは置き換え）:
+
+```bash
+curl -sS -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3000/api/admin/cost
+curl -sS -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @cost-state.json \
+  http://localhost:3000/api/admin/cost
+```
+
+`PUT` の JSON は `{"version":1,"entries":[...]}` 形式（4 件固定）。`GET` の応答をそのまま編集して流し込むとよいです。
+
+**Vercel**: 本番・プレビューそれぞれに `COST_ADMIN_BEARER` を設定してください。プレビュー環境に本番と同じトークンを入れると URL が推測されやすい場合にリスクになるため、プレビューは別トークンにするかアクセス制限（Vercel の保護機能等）を検討してください。
 
 ## API 型・契約の正（FE-1 / FE-2 / effective-typescript）
 
