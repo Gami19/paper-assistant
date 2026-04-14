@@ -7,6 +7,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+data/
+
 .env
 .env.*
 !.env.example
