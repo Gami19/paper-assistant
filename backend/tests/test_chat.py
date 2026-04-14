@@ -55,15 +55,30 @@ def test_post_chat_validation_invalid_role(client_chat_mock: TestClient) -> None
     assert response.status_code == 422
 
 
-def test_post_chat_no_user_message_returns_400(
+def test_post_chat_no_user_turn_returns_422(
     client_chat_mock: TestClient,
 ) -> None:
     response = client_chat_mock.post(
         "/v1/chat",
         json={"messages": [{"role": "assistant", "content": "only assistant"}]},
     )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "No user message to reply to"
+    assert response.status_code == 422
+
+
+def test_post_chat_multi_turn_mock(client_chat_mock: TestClient) -> None:
+    response = client_chat_mock.post(
+        "/v1/chat",
+        json={
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": "again"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert "[mock]" in response.json()["content"]
+    assert "again" in response.json()["content"]
 
 
 @pytest.fixture
@@ -80,7 +95,7 @@ def client_bedrock_mode() -> TestClient:
     )
 
 
-def test_post_chat_bedrock_client_error_returns_502(
+def test_post_chat_bedrock_throttling_returns_429(
     client_bedrock_mode: TestClient,
 ) -> None:
     mock_client = MagicMock()
@@ -93,8 +108,39 @@ def test_post_chat_bedrock_client_error_returns_502(
             "/v1/chat",
             json={"messages": [{"role": "user", "content": "hi"}]},
         )
+    assert response.status_code == 429
+    assert "混雑" in response.json()["detail"]
+
+
+def test_post_chat_bedrock_other_client_error_returns_502(
+    client_bedrock_mode: TestClient,
+) -> None:
+    mock_client = MagicMock()
+    mock_client.converse.side_effect = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "No"}},
+        "Converse",
+    )
+    with patch("app.infrastructure.bedrock.boto3.client", return_value=mock_client):
+        response = client_bedrock_mode.post(
+            "/v1/chat",
+            json={"messages": [{"role": "user", "content": "hi"}]},
+        )
     assert response.status_code == 502
     assert response.json()["detail"] == "Assistant temporarily unavailable"
+
+
+def test_post_chat_paper_excerpt_over_max_length_returns_422(
+    client_chat_mock: TestClient,
+) -> None:
+    excerpt = "x" * 50_001
+    response = client_chat_mock.post(
+        "/v1/chat",
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "paper_excerpt": excerpt,
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_production_forbids_chat_mock() -> None:

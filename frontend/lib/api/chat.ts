@@ -27,10 +27,17 @@ export type ChatReplyResult =
   | { kind: "invalid_json" }
   | { kind: "invalid_body"; detail: string };
 
+/** POST /v1/chat のリクエスト JSON（FastAPI `ChatRequest` と同期）。 */
+export type ChatRequestPayload = {
+  messages: ChatMessage[];
+  paper_excerpt?: string;
+};
+
 export async function fetchChatReply(
   baseUrl: string | undefined,
   messages: ChatMessage[],
   init?: RequestInit,
+  options?: { paperExcerpt?: string | null },
 ): Promise<ChatReplyResult> {
   const base = normalizeApiBaseUrl(baseUrl);
   if (!base) {
@@ -38,7 +45,12 @@ export async function fetchChatReply(
   }
 
   const url = `${base}/v1/chat`;
-  const body = JSON.stringify({ messages });
+  const payload: ChatRequestPayload = { messages };
+  const excerpt = options?.paperExcerpt?.trim();
+  if (excerpt) {
+    payload.paper_excerpt = excerpt;
+  }
+  const body = JSON.stringify(payload);
 
   let response: Response;
   try {

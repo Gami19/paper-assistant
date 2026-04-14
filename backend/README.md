@@ -53,7 +53,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | `BEDROCK_CONNECT_TIMEOUT_SECONDS` | いいえ | boto3 の接続タイムアウト秒（既定 `10`、1〜300）。 |
 | `BEDROCK_READ_TIMEOUT_SECONDS` | いいえ | boto3 の読み取りタイムアウト秒（既定 `120`、1〜600）。長文推論では増やす余地あり。 |
 
-**エンドポイント**: `POST /v1/chat` — リクエスト JSON は `{ "messages": [ { "role": "user", "content": "…" } ] }`（他ロールもスキーマ上は可）、レスポンスは `{ "role": "assistant", "content": "…" }`。プロンプト全文はログに出さない。
+**エンドポイント**: `POST /v1/chat` — リクエスト JSON は `{ "messages": [ { "role": "user"|"assistant", "content": "…" }, … ], "paper_excerpt": "…"（任意） }`（先頭は `user`、交互などバリデーションあり）、レスポンスは `{ "role": "assistant", "content": "…" }`。プロンプト全文・抜粋本文はログに出さない。
 
 **ローカル E2E（モック）**:
 
@@ -61,7 +61,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 2. `uvicorn` 起動後:  
    `curl -sS -X POST http://127.0.0.1:8000/v1/chat -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"hello"}]}'`
 
-**実 Bedrock**: `CHAT_MOCK_MODE=false`（または未設定）にし、**`AWS_REGION`**（またはアプリ既定）と **`BEDROCK_MODEL_ID`** を設定する。認証は **boto3 の IAM（SigV4）標準チェーン**を前提とする: 本番は **IAM ロール**（推奨）、ローカルは **`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`**（必要なら `AWS_SESSION_TOKEN`）または **`AWS_PROFILE`**。補足として Bedrock の **API キー** `AWS_BEARER_TOKEN_BEDROCK` も SDK が解釈する場合がある（[公式](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html)）。**コンソール Quickstart の `OPENAI_API_KEY` + `OPENAI_BASE_URL`（OpenAI 互換 Mantle）は本アプリ未使用**（`bedrock-runtime` の `Converse` を直接呼ぶため）。詳細は `backend/.env.example`。失敗時はクライアントへ汎用メッセージ（502）。**サーバーログ**に `error_code`・`region`・`model_id`・AWS の短い `aws_message` を出す（プロンプト本文はログに出さない）。タイムアウトは上記 `BEDROCK_*_TIMEOUT` で調整。
+**実 Bedrock**: `CHAT_MOCK_MODE=false`（または未設定）にし、**`AWS_REGION`**（またはアプリ既定）と **`BEDROCK_MODEL_ID`** を設定する。認証は **boto3 の IAM（SigV4）標準チェーン**を前提とする: 本番は **IAM ロール**（推奨）、ローカルは **`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`**（必要なら `AWS_SESSION_TOKEN`）または **`AWS_PROFILE`**。補足として Bedrock の **API キー** `AWS_BEARER_TOKEN_BEDROCK` も SDK が解釈する場合がある（[公式](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html)）。**コンソール Quickstart の `OPENAI_API_KEY` + `OPENAI_BASE_URL`（OpenAI 互換 Mantle）は本アプリ未使用**（`bedrock-runtime` の `Converse` を直接呼ぶため）。詳細は `backend/.env.example`。**レート制限**（`ThrottlingException` / `TooManyRequestsException`）のときは **429** と日本語の再試行メッセージを返す。その他の Bedrock クライアントエラーは **502**（汎用メッセージ）。**サーバーログ**に `error_code`・`region`・`model_id`・AWS の短い `aws_message` を出す（プロンプト本文はログに出ない）。スロットリング時はログレベルは **warning**。タイムアウトは上記 `BEDROCK_*_TIMEOUT` で調整。
 
 **POST /v1/chat が 502 のとき（ローカル）**: ログ行 `bedrock_converse_client_error` の **`error_code`** を見る。例: **`AccessDeniedException`** → IAM に `bedrock:Converse`（およびモデル・リージョンに応じたリソース）を付与する。[マネージドポリシー例](https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html)。**`ValidationException`** → `BEDROCK_MODEL_ID` がそのリージョンで無効な ID になっていないか確認。**モデル利用申請**が未完了のリージョン／モデルでは利用できない場合がある（[モデルアクセス](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)）。**フロントの `NEXT_PUBLIC_API_BASE_URL`** は API のホスト（例: `http://127.0.0.1:8000`）。**`CORS_ALLOW_ORIGINS`** にはブラウザのオリジン（例: `http://localhost:3000`）を含める。`OPTIONS 200` で `POST 502` なら CORS は通っており、原因は Bedrock 側が多い。
 
@@ -79,10 +79,18 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | `PAPER_FETCH_HOST_ALLOWLIST` | いいえ | 空=HTTPS・IP 検査のみ。非空=カンマ区切りの許可ホスト（サフィックス一致）。 |
 | `PAPER_GC_MAX_AGE_SECONDS` | いいえ | 保存成功後に **これより古い mtime の `*.pdf` を削除**（既定 86400 秒）。 |
 
+### BE-5（M5 MVP：抽出・要約・マルチターン）
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `PAPER_EXTRACT_MAX_PAGES` | いいえ | PDF から読む最大ページ数（サーバー要約・抽出の上限）。 |
+| `PAPER_EXTRACT_MAX_CHARS` | いいえ | 抽出テキストの最大文字数（超過分は切り詰め、`truncated_source` で通知）。 |
+
 **エンドポイント**:
 
 - `POST /v1/papers/upload` — `multipart/form-data`、フィールド名 **`file`**。成功時 `{ "paper_id", "filename", "size_bytes" }`。
-- `GET /v1/papers/{paper_id}/file` — `application/pdf`（`paper_id` は UUID）。
+- `GET /v1/papers/{paper_id}/file` — `application/pdf`（`paper_id` は UUID）。**ブラウザの `react-pdf` から CORS 付き GET で読む**想定。
+- `POST /v1/papers/{paper_id}/summarize` — 保存 PDF からテキスト抽出し、構造化要約（日本語フィールド）を JSON で返す。長大 PDF は切り詰め後に要約（`truncated_source: true`）。
 - `POST /v1/papers/fetch` — JSON `{ "url": "https://..." }`。**リダイレクトは追従しない**（[ADR-007](../docs/adr/ADR-007-be3-paper-pdf-local-storage.md)）。
 
 **ローカル curl（アップロード→取得）**:
