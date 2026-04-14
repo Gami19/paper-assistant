@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from app.domain.bedrock_errors import BedrockThrottledError
 from app.domain.paper_errors import (
     PaperFetchDisabledError,
     PaperFetchHttpError,
@@ -17,8 +18,9 @@ from app.domain.paper_errors import (
     PaperTooLargeError,
     PaperValidationError,
 )
-from app.schemas.papers import PaperFetchRequest, PaperUploadResponse
+from app.schemas.papers import PaperFetchRequest, PaperSummaryResponse, PaperUploadResponse
 from app.services.paper_store import resolve_paper_path, store_from_url, store_upload
+from app.services.paper_summarize import summarize_paper_file
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,39 @@ async def upload_paper(
         filename=stored.filename,
         size_bytes=stored.size_bytes,
     )
+
+
+@router.post("/v1/papers/{paper_id}/summarize", response_model=PaperSummaryResponse)
+def summarize_paper(
+    paper_id: UUID,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PaperSummaryResponse:
+    try:
+        path = resolve_paper_path(settings, paper_id)
+    except PaperNotFoundError:
+        raise HTTPException(status_code=404, detail="Paper not found") from None
+    try:
+        return summarize_paper_file(settings, path)
+    except PaperValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract text from PDF",
+        ) from exc
+    except ValueError:
+        raise HTTPException(
+            status_code=502,
+            detail="Summary generation failed",
+        ) from None
+    except BedrockThrottledError:
+        raise HTTPException(
+            status_code=429,
+            detail="モデルが混雑しています。しばらくしてから再度お試しください。",
+        ) from None
+    except RuntimeError:
+        raise HTTPException(
+            status_code=502,
+            detail="Assistant temporarily unavailable",
+        ) from None
 
 
 @router.get("/v1/papers/{paper_id}/file")

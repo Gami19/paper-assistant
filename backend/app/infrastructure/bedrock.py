@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.ports.chat_completion import ChatCompleter
+from app.domain.bedrock_errors import BedrockThrottledError
+from app.ports.chat_completion import ChatCompleter, ChatTurn
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+_BEDROCK_THROTTLE_CODES = frozenset({"ThrottlingException", "TooManyRequestsException"})
 
 
 def _bedrock_runtime_client(
@@ -31,16 +35,37 @@ def _bedrock_runtime_client(
     )
 
 
+def _turns_to_bedrock_messages(turns: list[ChatTurn]) -> list[dict]:
+    out: list[dict] = []
+    for role, text in turns:
+        br_role: Literal["user", "assistant"] = role
+        out.append(
+            {
+                "role": br_role,
+                "content": [{"text": text}],
+            },
+        )
+    return out
+
+
 class MockChatCompleter:
     """CHAT_MOCK_MODE 用。AWS を呼ばない。"""
 
-    def complete(self, user_text: str) -> str:
-        preview = user_text.strip()[:500]
-        return f"[mock] {preview}"
+    def converse(
+        self,
+        *,
+        system: str | None,
+        messages: list[ChatTurn],
+    ) -> str:
+        for role, content in reversed(messages):
+            if role == "user":
+                preview = content.strip()[:500]
+                return f"[mock] {preview}"
+        return "[mock]"
 
 
 class BedrockChatCompleter:
-    """Settings 由来のリージョン・モデル・タイムアウトで Converse を 1 往復。"""
+    """Settings 由来のリージョン・モデル・タイムアウトで Converse を実行。"""
 
     def __init__(self, settings: Settings) -> None:
         self._region = settings.aws_region
@@ -48,34 +73,39 @@ class BedrockChatCompleter:
         self._connect_timeout = settings.bedrock_connect_timeout_seconds
         self._read_timeout = settings.bedrock_read_timeout_seconds
 
-    def complete(self, user_text: str) -> str:
+    def converse(
+        self,
+        *,
+        system: str | None,
+        messages: list[ChatTurn],
+    ) -> str:
         client = _bedrock_runtime_client(
             self._region,
             self._connect_timeout,
             self._read_timeout,
         )
+        kwargs: dict = {
+            "modelId": self._model_id,
+            "messages": _turns_to_bedrock_messages(messages),
+        }
+        if system and system.strip():
+            kwargs["system"] = [{"text": system.strip()}]
         try:
-            response = client.converse(
-                modelId=self._model_id,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [{"text": user_text}],
-                    }
-                ],
-            )
+            response = client.converse(**kwargs)
         except ClientError as e:
             err = e.response.get("Error", {}) if isinstance(e.response, dict) else {}
             code = err.get("Code", "Unknown")
             aws_message = (err.get("Message") or "")[:300]
-            # ターミナルで原因特定しやすいよう本文に含める（クライアントには返さない）
-            logger.error(
+            log_fn = logger.warning if code in _BEDROCK_THROTTLE_CODES else logger.error
+            log_fn(
                 "bedrock_converse_client_error error_code=%s region=%s model_id=%s aws_message=%s",
                 code,
                 self._region,
                 self._model_id,
                 aws_message,
             )
+            if code in _BEDROCK_THROTTLE_CODES:
+                raise BedrockThrottledError(code) from e
             msg = "Model request failed"
             raise RuntimeError(msg) from e
         except BotoCoreError as e:

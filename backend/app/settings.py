@@ -92,6 +92,19 @@ class Settings(BaseSettings):
         le=86400 * 365,
         description="Delete stored PDFs older than this (mtime) after successful store",
     )
+    # --- BE-5（M5 要約・抽出）---
+    paper_extract_max_pages: int = Field(
+        default=40,
+        ge=1,
+        le=500,
+        description="Max PDF pages to read for text extraction (summarize / excerpt)",
+    )
+    paper_extract_max_chars: int = Field(
+        default=80_000,
+        ge=1_000,
+        le=500_000,
+        description="Max characters of extracted plain text before truncation",
+    )
 
     @field_validator("papers_storage_dir", mode="before")
     @classmethod

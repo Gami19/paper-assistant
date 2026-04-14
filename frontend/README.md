@@ -50,7 +50,8 @@ curl -sS -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
 ## API 型・契約の正（FE-1 / FE-2 / effective-typescript）
 
 - **`GET /health` の JSON 契約**は **`lib/api/health.ts` の Zod スキーマ**を唯一の正とする（別ファイルで同じ形を手書きしない）。
-- **`POST /v1/chat` の JSON 契約**は **`lib/api/chat.ts` の Zod スキーマ**を唯一の正とする。
+- **`POST /v1/chat` の JSON 契約**は **`lib/api/chat.ts` の Zod スキーマ**を唯一の正とする（`messages` 複数ターン・任意 `paper_excerpt` を含む）。
+- **`POST /v1/papers/upload`** および **`POST /v1/papers/{paper_id}/summarize`** の JSON 契約は **`lib/api/papers.ts` の Zod スキーマ**を唯一の正とする。
 - バックエンドの応答形を変える場合は、**FastAPI・pytest・上記 Zod**を同じ PR で更新する。
 
 ## バックエンド疎通（M1）
@@ -61,16 +62,17 @@ curl -sS -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
 
 本番相当では、Vercel の `NEXT_PUBLIC_API_BASE_URL` に Railway（等）の API 公開 URL を設定する。
 
-## 論文読解 UI（M3 / FE-3）
+## 論文読解 UI（M5 / FE-5）
 
 1. **`npm install`** 時に **postinstall** で `pdfjs-dist` から **`pdf.worker.min.mjs`** と **`standard_fonts/`**・**`wasm/`**・**`cmaps/`** を `public/` にコピーする（[ADR-006](../docs/adr/ADR-006-pdf-viewer-react-pdf.md)）。`react-pdf` の `<Document options={…}>` でこれらの URL を参照する。**生成物は `.gitignore` 対象**のため、クローン後は必ず `npm install` を実行すること。
 2. 既定の **`public/sample.pdf`** は最小限の 1 ページ PDF。差し替え可。
-3. 開発サーバーで **[http://localhost:3000/read](http://localhost:3000/read)** を開き、**PDF を主表示・チャットを右（狭い画面では下）** に確認する。
+3. 開発サーバーで **[http://localhost:3000/read](http://localhost:3000/read)** を開き、**PDF を主表示・要約＋ Q&A を右（狭い画面では下）** を確認する。
+4. **`PDF を開く（アップロード）`** で選んだファイルは **`POST /v1/papers/upload`** へ送られ、返却 `paper_id` で **`GET …/v1/papers/{id}/file`** を `react-pdf` に読ませる。**要約**は **`POST /v1/papers/{id}/summarize`**、**Q&A** は会話履歴つき **`POST /v1/chat`**（任意で **`paper_excerpt`** に PDF 上の選択テキスト）。サンプル／URL から開いただけの場合は `paper_id` が無いため要約は無効・チャットは警告付きで利用可能。
 
 ## チャット試用（M2 / FE-2）
 
 1. バックエンドで `CHAT_MOCK_MODE=true`（または実 Bedrock 設定）と、ブラウザ経由なら `CORS_ALLOW_ORIGINS` に `http://localhost:3000` 等を含める。
-2. `NEXT_PUBLIC_API_BASE_URL` を設定したうえでトップページの「試しに 1 往復」、または **`/read`** の補助チャットから送信し、アシスタント文が表示されることを確認する。
+2. `NEXT_PUBLIC_API_BASE_URL` を設定したうえでトップページの「試しに 1 往復」から送信するか、**`/read`** の **論文 Q&A** で複数ターン＋抜粋を試し、アシスタント文が表示されることを確認する。
 
 ### CORS について
 

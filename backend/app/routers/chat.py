@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.domain.bedrock_errors import BedrockThrottledError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_reply import NoUserMessageError, chat_reply_use_case
 from app.settings import Settings
@@ -27,6 +28,11 @@ def chat_reply(settings: Settings, body: ChatRequest) -> ChatResponse:
         raise HTTPException(
             status_code=400,
             detail="No user message to reply to",
+        ) from None
+    except BedrockThrottledError:
+        raise HTTPException(
+            status_code=429,
+            detail="モデルが混雑しています。しばらくしてから再度お試しください。",
         ) from None
     except RuntimeError:
         raise HTTPException(

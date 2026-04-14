@@ -5,7 +5,10 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-import { ChatTryPanel } from "@/app/components/chat-try-panel";
+import { ReadingChatPanel } from "@/app/components/reading-chat-panel";
+import { ReadingSummaryPanel } from "@/app/components/reading-summary-panel";
+import { normalizeApiBaseUrl } from "@/lib/api/health";
+import { uploadPaper } from "@/lib/api/papers";
 import { PDF_DOCUMENT_OPTIONS } from "@/lib/pdf/document-options";
 import { isValidPdfPageCount } from "@/lib/pdf/page-number";
 
@@ -18,12 +21,25 @@ const ZOOM_MAX = 2.5;
 
 type PdfSource = { kind: "url"; url: string } | { kind: "blob"; url: string };
 
+function getPdfSelectionText(container: HTMLElement | null): string {
+  if (!container) return "";
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "";
+  const range = sel.getRangeAt(0);
+  if (!container.contains(range.commonAncestorContainer)) return "";
+  return sel.toString().replace(/\s+/g, " ").trim();
+}
+
 type Props = {
   apiBaseUrl: string | undefined;
 };
 
 export function ReadingClient({ apiBaseUrl }: Props) {
   const [source, setSource] = useState<PdfSource>({ kind: "url", url: DEFAULT_PDF });
+  const [paperId, setPaperId] = useState<string | null>(null);
+  const [paperExcerpt, setPaperExcerpt] = useState("");
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   /** 1-based、react-pdf の pageNumber prop と一致 */
   const [pageNumber, setPageNumber] = useState(1);
@@ -32,6 +48,7 @@ export function ReadingClient({ apiBaseUrl }: Props) {
   const [urlInput, setUrlInput] = useState("");
   const [docLoading, setDocLoading] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  const pdfAreaRef = useRef<HTMLDivElement | null>(null);
 
   const revokeBlob = useCallback(() => {
     if (blobUrlRef.current) {
@@ -48,6 +65,7 @@ export function ReadingClient({ apiBaseUrl }: Props) {
       const url = URL.createObjectURL(blob);
       blobUrlRef.current = url;
       setSource({ kind: "blob", url });
+      setPaperId(null);
       setPageNumber(1);
       setNumPages(null);
       setLoadError(null);
@@ -56,15 +74,52 @@ export function ReadingClient({ apiBaseUrl }: Props) {
     [revokeBlob],
   );
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (file.type !== "application/pdf") {
       setLoadError("PDF ファイル（application/pdf）を選んでください。");
       return;
     }
-    setFileFromBlob(file);
-    e.target.value = "";
+
+    const base = normalizeApiBaseUrl(apiBaseUrl);
+    if (!base) {
+      setLoadError(
+        "バックエンド URL（NEXT_PUBLIC_API_BASE_URL）が未設定のためアップロードできません。.env.local を確認するか、サンプル／URL から開いてください。",
+      );
+      return;
+    }
+
+    setUploading(true);
+    setLoadError(null);
+    setSelectionNotice(null);
+    revokeBlob();
+
+    const res = await uploadPaper(apiBaseUrl, file);
+    setUploading(false);
+
+    if (res.kind !== "ok") {
+      const msg =
+        res.kind === "http_error"
+          ? `アップロードに失敗しました（HTTP ${res.status}）。`
+          : res.kind === "network_error"
+            ? `ネットワーク: ${res.message}`
+            : res.kind === "invalid_body"
+              ? `応答形式が不正です: ${res.detail}`
+              : res.kind === "invalid_json"
+                ? "応答を JSON として解釈できませんでした。"
+                : "アップロードに失敗しました。";
+      setLoadError(msg);
+      return;
+    }
+
+    const id = res.data.paper_id;
+    setPaperId(id);
+    setSource({ kind: "url", url: `${base}/v1/papers/${id}/file` });
+    setPageNumber(1);
+    setNumPages(null);
+    setDocLoading(true);
   };
 
   const loadFromUrl = async () => {
@@ -81,6 +136,7 @@ export function ReadingClient({ apiBaseUrl }: Props) {
       return;
     }
     setLoadError(null);
+    setSelectionNotice(null);
     setDocLoading(true);
     try {
       const res = await fetch(absolute, { mode: "cors", credentials: "omit" });
@@ -106,6 +162,9 @@ export function ReadingClient({ apiBaseUrl }: Props) {
 
   const resetToSample = () => {
     revokeBlob();
+    setPaperId(null);
+    setPaperExcerpt("");
+    setSelectionNotice(null);
     setSource({ kind: "url", url: DEFAULT_PDF });
     setPageNumber(1);
     setNumPages(null);
@@ -138,16 +197,26 @@ export function ReadingClient({ apiBaseUrl }: Props) {
   const zoomOut = () => setScale((s) => Math.max(ZOOM_MIN, Math.round((s - ZOOM_STEP) * 100) / 100));
   const zoomIn = () => setScale((s) => Math.min(ZOOM_MAX, Math.round((s + ZOOM_STEP) * 100) / 100));
 
+  const applySelectionToChat = () => {
+    const text = getPdfSelectionText(pdfAreaRef.current);
+    if (!text) {
+      setSelectionNotice("PDF のテキストレイヤー上で文字を選択してから押してください。");
+      return;
+    }
+    setSelectionNotice(null);
+    setPaperExcerpt(`（表示中 ${pageNumber} ページ付近の抜粋）\n"""\n${text}\n"""`);
+  };
+
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="shrink-0 border-b border-border-subtle px-paper-4 py-paper-3">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-paper-3">
           <div>
-            <p className="text-xs text-muted-foreground">paper-assistant / FE-3（M3）</p>
+            <p className="text-xs text-muted-foreground">paper-assistant / FE-5（M5）</p>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">論文読解</h1>
           </div>
           <p className="max-w-[42ch] text-xs text-muted-foreground">
-            PDF を主表示、チャットは補助パネル（仕様 §5.1）。選択範囲→質問は今後の F1-2。
+            ファイルから開くと API にアップロードされ、要約・文脈付き Q&A が利用できます（仕様 §MVP）。
           </p>
         </div>
       </header>
@@ -164,8 +233,8 @@ export function ReadingClient({ apiBaseUrl }: Props) {
 
           <div className="flex shrink-0 flex-wrap items-center gap-paper-2 border-b border-border-subtle bg-neutral-100/80 px-paper-3 py-paper-2 dark:bg-neutral-900/50">
             <label className="min-h-11 cursor-pointer rounded-md border border-border-subtle bg-background px-paper-3 py-2 text-sm font-medium text-foreground hover:bg-neutral-50 dark:hover:bg-neutral-800">
-              <span>PDF を開く</span>
-              <input type="file" accept="application/pdf" className="sr-only" onChange={onFileChange} />
+              <span>PDF を開く（アップロード）</span>
+              <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => void onFileChange(e)} />
             </label>
             <button
               type="button"
@@ -213,7 +282,7 @@ export function ReadingClient({ apiBaseUrl }: Props) {
               ▶
             </button>
             <span className="text-sm text-muted-foreground" aria-live="polite">
-              {numPages != null ? `${pageNumber} / ${numPages}` : "— / —"}
+              ページ {numPages != null ? `${pageNumber} / ${numPages}` : "— / —"}
             </span>
             <span className="mx-paper-2 hidden h-6 w-px bg-border-subtle sm:inline-block" aria-hidden />
             <button
@@ -237,15 +306,22 @@ export function ReadingClient({ apiBaseUrl }: Props) {
             <span className="text-sm text-muted-foreground">{Math.round(scale * 100)}%</span>
             <button
               type="button"
-              className="ml-auto min-h-11 rounded-md border border-dashed border-border-subtle px-paper-3 text-sm text-muted-foreground"
-              disabled
-              title="F1-2 で接続予定"
+              className="ml-auto min-h-11 rounded-md border border-border-subtle bg-primary-600 px-paper-3 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={applySelectionToChat}
+              disabled={!!loadError}
+              title="テキストレイヤーで選択した範囲を Q&A の文脈に載せます"
             >
-              選択範囲について聞く（準備中）
+              選択範囲について聞く
             </button>
           </div>
 
-          <div className="relative flex-1 overflow-auto bg-neutral-200/60 dark:bg-neutral-950/80">
+          {selectionNotice ? (
+            <p className="border-b border-border-subtle bg-amber-50 px-paper-3 py-paper-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100" role="status" aria-live="polite">
+              {selectionNotice}
+            </p>
+          ) : null}
+
+          <div ref={pdfAreaRef} className="relative flex-1 overflow-auto bg-neutral-200/60 dark:bg-neutral-950/80">
             {loadError ? (
               <div className="p-paper-6" role="alert">
                 <p className="text-sm font-medium text-semantic-danger">PDF を表示できません</p>
@@ -253,14 +329,16 @@ export function ReadingClient({ apiBaseUrl }: Props) {
               </div>
             ) : null}
 
-            {docLoading && !loadError ? (
+            {(docLoading || uploading) && !loadError ? (
               <div
                 className="absolute inset-0 z-10 flex items-center justify-center bg-background/70 p-paper-6"
                 role="status"
                 aria-live="polite"
               >
                 <div className="max-w-sm space-y-paper-3 text-center">
-                  <p className="text-sm text-muted-foreground">PDF を読み込んでいます…</p>
+                  <p className="text-sm text-muted-foreground">
+                    {uploading ? "PDF をアップロードしています…" : "PDF を読み込んでいます…"}
+                  </p>
                   <div className="space-y-2 motion-reduce:animate-none">
                     <div className="h-2 w-full rounded bg-neutral-200 motion-safe:animate-pulse dark:bg-neutral-700" />
                     <div className="mx-auto h-2 w-4/5 rounded bg-neutral-200 motion-safe:animate-pulse dark:bg-neutral-700" />
@@ -293,13 +371,20 @@ export function ReadingClient({ apiBaseUrl }: Props) {
           </div>
         </section>
 
-        {/* 副: チャット */}
+        {/* 副: 要約 + チャット */}
         <aside
           className="flex w-full shrink-0 flex-col border-t border-border-subtle lg:h-auto lg:min-h-0 lg:w-[min(100%,24rem)] lg:max-w-md lg:border-l lg:border-t-0"
-          aria-label="補助チャット"
+          aria-label="要約と補助チャット"
         >
+          <ReadingSummaryPanel apiBaseUrl={apiBaseUrl} paperId={paperId} />
           <div className="flex min-h-0 flex-1 flex-col lg:h-full">
-            <ChatTryPanel apiBaseUrl={apiBaseUrl} variant="sidebar" />
+            <ReadingChatPanel
+              apiBaseUrl={apiBaseUrl}
+              paperId={paperId}
+              paperExcerpt={paperExcerpt}
+              currentPage={pageNumber}
+              onClearExcerpt={() => setPaperExcerpt("")}
+            />
           </div>
         </aside>
       </div>
