@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { MarkdownBody } from "@/app/components/markdown-body";
 import { fetchChatReply, type ChatReplyResult } from "@/lib/api/chat";
 
 const DOHERTY_MS = 400;
@@ -215,9 +216,9 @@ export function ChatTryPanel({ apiBaseUrl, variant = "full" }: Props) {
             <p className="text-sm font-medium text-semantic-success" role="status">
               アシスタントの応答
             </p>
-            <p className="whitespace-pre-wrap text-base leading-relaxed text-foreground">
-              {ui.content}
-            </p>
+            <div className="text-base leading-relaxed text-foreground">
+              <MarkdownBody>{ui.content}</MarkdownBody>
+            </div>
           </div>
         ) : null}
 

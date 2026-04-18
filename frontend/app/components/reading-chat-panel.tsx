@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { MarkdownBody } from "@/app/components/markdown-body";
 import {
   fetchChatReply,
   type ChatMessage,
@@ -214,9 +215,9 @@ export function ReadingChatPanel({
               <p className="text-xs font-medium text-muted-foreground">
                 {m.role === "user" ? "あなた" : "アシスタント"}
               </p>
-              <p className="mt-1 whitespace-pre-wrap leading-relaxed text-foreground">
-                {m.content}
-              </p>
+              <div className="mt-1 leading-relaxed text-foreground">
+                <MarkdownBody>{m.content}</MarkdownBody>
+              </div>
             </li>
           ))}
           <div ref={listEndRef} />

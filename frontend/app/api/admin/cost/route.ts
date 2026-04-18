@@ -5,7 +5,7 @@ import {
   costApiPutBodySchema,
   getCostSummary,
   isBearerConfigured,
-  writeCostEntries,
+  writeCostFromPutBody,
 } from "@/lib/server/cost";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -20,10 +20,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
   const summary = await getCostSummary();
   return NextResponse.json({
-    version: 1 as const,
+    version: 2 as const,
     entries: summary.entries,
     totalUsd: summary.totalUsd,
     countingProviders: summary.countingProviders,
+    lastSync: summary.lastSync ?? null,
   });
 }
 
@@ -51,15 +52,16 @@ export async function PUT(request: Request): Promise<NextResponse> {
     );
   }
   try {
-    await writeCostEntries(parsed.data.entries);
+    await writeCostFromPutBody(parsed.data);
   } catch {
     return NextResponse.json({ error: "Failed to persist" }, { status: 500 });
   }
   const summary = await getCostSummary();
   return NextResponse.json({
-    version: 1 as const,
+    version: 2 as const,
     entries: summary.entries,
     totalUsd: summary.totalUsd,
     countingProviders: summary.countingProviders,
+    lastSync: summary.lastSync ?? null,
   });
 }

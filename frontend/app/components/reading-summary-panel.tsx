@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { MarkdownBody } from "@/app/components/markdown-body";
 import {
   summarizePaper,
   type PaperSummarizeResult,
@@ -66,12 +67,6 @@ export function ReadingSummaryPanel({ apiBaseUrl, paperId }: Props) {
   }, []);
 
   useEffect(() => () => clearTimer(), [clearTimer]);
-
-  useEffect(() => {
-    if (!paperId) {
-      setPhase({ kind: "idle" });
-    }
-  }, [paperId]);
 
   const runSummarize = async () => {
     if (!paperId || phase.kind === "loading") return;
@@ -180,9 +175,9 @@ export function ReadingSummaryPanel({ apiBaseUrl, paperId }: Props) {
                       </span>
                     </span>
                   </summary>
-                  <p className="px-paper-3 pb-paper-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                    {text}
-                  </p>
+                  <div className="px-paper-3 pb-paper-2 text-sm leading-relaxed text-foreground">
+                    <MarkdownBody compact>{text}</MarkdownBody>
+                  </div>
                 </details>
               );
             })}

@@ -2,10 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 
-import { writeCostEntries } from "@/lib/server/cost/store";
 import { seedCostEntries } from "@/lib/server/cost/seed";
+import type { CostSyncRecord } from "@/lib/server/cost/schema";
+import { runCostSync } from "@/lib/server/cost/sync";
+import { writeCostEntries } from "@/lib/server/cost/store";
 
 export type SaveCostFormState = { ok?: true; error?: string };
+
+/** `useActionState` の初期値は `{}`（idle）。成功時は `ok` + `lastSync` */
+export type SyncCostFormState = {
+  ok?: true;
+  error?: string;
+  lastSync?: CostSyncRecord;
+};
 
 export async function saveCostAction(
   _prev: SaveCostFormState | undefined,
@@ -52,4 +61,26 @@ export async function saveCostAction(
 
   revalidatePath("/admin/cost");
   return { ok: true };
+}
+
+export async function syncCostAction(
+  _prev: SyncCostFormState,
+  formData: FormData,
+): Promise<SyncCostFormState> {
+  const expected = process.env.COST_ADMIN_BEARER?.trim();
+  if (!expected) {
+    return { error: "サーバーに COST_ADMIN_BEARER が設定されていません。" };
+  }
+  const token = String(formData.get("admin_token_sync") ?? "").trim();
+  if (token !== expected) {
+    return { error: "トークンが一致しません。" };
+  }
+
+  try {
+    const summary = await runCostSync();
+    revalidatePath("/admin/cost");
+    return { ok: true as const, lastSync: summary.lastSync };
+  } catch {
+    return { error: "同期に失敗しました。" };
+  }
 }
