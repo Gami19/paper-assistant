@@ -9,7 +9,7 @@ import { ReadingChatPanel } from "@/app/components/reading-chat-panel";
 import { ReadingSummaryPanel } from "@/app/components/reading-summary-panel";
 import { normalizeApiBaseUrl } from "@/lib/api/health";
 import { uploadPaper } from "@/lib/api/papers";
-import { PDF_DOCUMENT_OPTIONS } from "@/lib/pdf/document-options";
+import { PDF_READING_DOCUMENT_OPTIONS } from "@/lib/pdf/document-options";
 import { isValidPdfPageCount } from "@/lib/pdf/page-number";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -352,7 +352,7 @@ export function ReadingClient({ apiBaseUrl }: Props) {
                 <Document
                   key={source.url}
                   file={source.url}
-                  options={PDF_DOCUMENT_OPTIONS}
+                  options={PDF_READING_DOCUMENT_OPTIONS}
                   onLoadSuccess={onDocumentLoadSuccess}
                   onLoadError={onDocumentLoadError}
                   loading={null}
@@ -376,7 +376,11 @@ export function ReadingClient({ apiBaseUrl }: Props) {
           className="flex w-full shrink-0 flex-col border-t border-border-subtle lg:h-auto lg:min-h-0 lg:w-[min(100%,24rem)] lg:max-w-md lg:border-l lg:border-t-0"
           aria-label="要約と補助チャット"
         >
-          <ReadingSummaryPanel apiBaseUrl={apiBaseUrl} paperId={paperId} />
+          <ReadingSummaryPanel
+            key={paperId ?? "no-uploaded-paper"}
+            apiBaseUrl={apiBaseUrl}
+            paperId={paperId}
+          />
           <div className="flex min-h-0 flex-1 flex-col lg:h-full">
             <ReadingChatPanel
               apiBaseUrl={apiBaseUrl}

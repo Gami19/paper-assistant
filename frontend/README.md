@@ -25,6 +25,15 @@ npm run dev
 | `COST_ADMIN_BEARER` | **サーバのみ** | 運用コスト API（`GET`/`PUT`）と `/admin/cost` の保存で共用。`NEXT_PUBLIC_` **禁止**（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)） |
 | `COST_DATA_FILE` | **サーバのみ** | 任意。コスト JSON の保存パス。未設定時は `frontend/.data/cost-state.json`（`.gitignore` 対象） |
 
+### 第 2 段階（自動取得・任意）
+
+| 変数 | 説明 |
+|------|------|
+| `COST_SYNC_VERCEL_TOKEN` / `COST_SYNC_VERCEL_TEAM_ID` | Vercel REST（Billing charges）。未設定なら当該行はスキップ。 |
+| `COST_SYNC_RAILWAY_TOKEN` | Railway GraphQL 疎通。請求 USD は公開 API で取らない実装のため、金額は更新されません。 |
+| `COST_SYNC_SUPABASE_ACCESS_TOKEN` / `COST_SYNC_SUPABASE_ORG_ID` | Management API。同上で金額は更新されない場合があります。 |
+| `COST_SYNC_AWS_ACCESS_KEY_ID` / `COST_SYNC_AWS_SECRET_ACCESS_KEY` | Cost Explorer（`ce:GetCostAndUsage`）。未設定時は `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` にフォールバック。**バックエンド用キーと分離したい場合は COST_SYNC_AWS_* を推奨。** |
+
 本番では [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) に同じキー名で登録する。
 
 ## 運用コスト管理（FE-4 / F4-3 第 1 段階）
@@ -43,7 +52,16 @@ curl -sS -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:3000/api/admin/cost
 ```
 
-`PUT` の JSON は `{"version":1,"entries":[...]}` 形式（4 件固定）。`GET` の応答をそのまま編集して流し込むとよいです。
+`PUT` の JSON は `{"version":1,"entries":[...]}` または `version: 2`（任意 `lastSync`）で 4 件固定。`GET` の応答をそのまま編集して流し込むとよいです。
+
+**第 2 段階・同期 API**（Bearer 必須。トークンを URL やログに残さないこと）:
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:3000/api/admin/cost/sync
+```
+
+応答には `lastSync`（プロバイダ別の成功／スキップ／失敗）と更新後の `entries` が含まれます。管理画面 `/admin/cost` の「自動取得」からも同じ処理を Server Action で実行できます。
 
 **Vercel**: 本番・プレビューそれぞれに `COST_ADMIN_BEARER` を設定してください。プレビュー環境に本番と同じトークンを入れると URL が推測されやすい場合にリスクになるため、プレビューは別トークンにするかアクセス制限（Vercel の保護機能等）を検討してください。
 
@@ -82,6 +100,7 @@ curl -sS -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
 
 ```bash
 npm run lint
+npm run test
 npm run build
 ```
 

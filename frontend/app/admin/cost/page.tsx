@@ -11,12 +11,13 @@ export const metadata = {
 export default async function AdminCostPage() {
   const summary = await getCostSummary();
   const bearerConfigured = isBearerConfigured();
-  const formKey = summary.entries
+  const syncKey = summary.lastSync?.attemptedAt ?? "";
+  const formKey = `${syncKey}|${summary.entries
     .map(
       (e) =>
         `${e.providerId}:${e.updatedAt}:${e.monthlyUsd ?? ""}:${e.memo}`,
     )
-    .join("|");
+    .join("|")}`;
 
   return (
     <div className="flex flex-col gap-paper-8">
@@ -38,6 +39,7 @@ export default async function AdminCostPage() {
         entries={summary.entries}
         totalUsd={summary.totalUsd}
         countingProviders={summary.countingProviders}
+        lastSync={summary.lastSync}
         bearerConfigured={bearerConfigured}
       />
     </div>
