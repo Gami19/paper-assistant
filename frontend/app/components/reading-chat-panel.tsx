@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MarkdownBody } from "@/app/components/markdown-body";
+import { DevNote } from "@/app/components/dev-note";
 import {
   fetchChatReply,
   type ChatMessage,
@@ -175,15 +176,17 @@ export function ReadingChatPanel({
       >
         論文 Q&A
       </h2>
-      <p className="mt-paper-2 text-sm text-muted-foreground">
-        会話履歴ごと <code className="font-mono text-foreground">POST /v1/chat</code> に送信します。
-        現在の表示ページは <span className="font-medium text-foreground">{currentPage}</span> です。
-        {paperId ? null : (
-          <span className="mt-1 block text-semantic-warning">
-            ローカル／URL のみの PDF ではサーバー側の全文はありません。必要ならファイルをアップロードしてください。
-          </span>
-        )}
-      </p>
+      <DevNote>
+        <p className="mt-paper-2 text-sm text-muted-foreground">
+          会話履歴ごと <code className="font-mono text-foreground">POST /v1/chat</code> に送信します。
+          現在の表示ページは <span className="font-medium text-foreground">{currentPage}</span> です。
+          {paperId ? null : (
+            <span className="mt-1 block text-semantic-warning">
+              ローカル／URL のみの PDF ではサーバー側の全文はありません。必要ならファイルをアップロードしてください。
+            </span>
+          )}
+        </p>
+      </DevNote>
 
       {paperExcerpt.trim() ? (
         <div className="mt-paper-3 flex flex-wrap items-start gap-paper-2 rounded-md border border-primary-200 bg-primary-50/80 p-paper-3 dark:border-primary-900 dark:bg-primary-950/40">
