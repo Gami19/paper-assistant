@@ -1,4 +1,5 @@
 import { RefreshHealthButton } from "@/app/components/refresh-health-button";
+import { DevNote } from "@/app/components/dev-note";
 import type { HealthCheckResult } from "@/lib/api/health";
 
 type Props = {
@@ -40,10 +41,12 @@ export function BackendHealthCard({ result }: Props) {
       >
         バックエンド接続
       </h2>
-      <p className="mt-paper-2 text-sm text-muted-foreground">
-        M1 疎通確認（サーバー経由で <code className="font-mono text-foreground">/health</code>{" "}
-        を呼び出しています）
-      </p>
+      <DevNote>
+        <p className="mt-paper-2 text-sm text-muted-foreground">
+          M1 疎通確認（サーバー経由で <code className="font-mono text-foreground">/health</code>{" "}
+          を呼び出しています）
+        </p>
+      </DevNote>
 
       <div className="mt-paper-4 flex flex-col gap-paper-3">
         <p

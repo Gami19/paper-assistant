@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MarkdownBody } from "@/app/components/markdown-body";
+import { DevNote } from "@/app/components/dev-note";
 import { fetchChatReply, type ChatReplyResult } from "@/lib/api/chat";
 
 const DOHERTY_MS = 400;
@@ -147,20 +148,22 @@ export function ChatTryPanel({ apiBaseUrl, variant = "full" }: Props) {
       >
         {isSidebar ? "チャット（補助）" : "試しに 1 往復（FE-2 / M2）"}
       </h2>
-      <p className="mt-paper-2 text-sm text-muted-foreground">
-        {isSidebar ? (
-          <>
-            読みながら質問する用（F1-2 接続予定）。{" "}
-            <code className="font-mono text-foreground">POST /v1/chat</code>
-          </>
-        ) : (
-          <>
-            ブラウザから <code className="font-mono text-foreground">POST /v1/chat</code>{" "}
-            を呼び出します。CORS と <code className="font-mono text-foreground">CHAT_MOCK_MODE</code>{" "}
-            の設定が必要です。
-          </>
-        )}
-      </p>
+      <DevNote>
+        <p className="mt-paper-2 text-sm text-muted-foreground">
+          {isSidebar ? (
+            <>
+              読みながら質問する用（F1-2 接続予定）。{" "}
+              <code className="font-mono text-foreground">POST /v1/chat</code>
+            </>
+          ) : (
+            <>
+              ブラウザから <code className="font-mono text-foreground">POST /v1/chat</code>{" "}
+              を呼び出します。CORS と{" "}
+              <code className="font-mono text-foreground">CHAT_MOCK_MODE</code> の設定が必要です。
+            </>
+          )}
+        </p>
+      </DevNote>
 
       <div
         className={`mt-paper-4 flex min-h-0 flex-1 flex-col gap-paper-4 ${isSidebar ? "overflow-y-auto" : ""}`}

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { BackendHealthCard } from "@/app/components/backend-health-card";
 import { ChatTryPanel } from "@/app/components/chat-try-panel";
+import { DevNote } from "@/app/components/dev-note";
 import { fetchBackendHealth } from "@/lib/api/health";
 
 /** 疎通はリクエストごとに取り直す（ビルド時の URL に固定しない） */
@@ -27,12 +28,17 @@ export default async function Home() {
           >
             論文読解（/read）
           </Link>{" "}
-          へ。ここではバックエンド健全性とチャット API の試行用パネルを置いています。トークンは{" "}
-          <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100">
-            globals.css
-          </code>{" "}
-          を参照してください。
+          へ。
         </p>
+        <DevNote>
+          <p className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
+            ここではバックエンド健全性とチャット API の試行用パネルを置いています。トークンは{" "}
+            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100">
+              globals.css
+            </code>{" "}
+            を参照してください。
+          </p>
+        </DevNote>
         <BackendHealthCard result={health} />
         <ChatTryPanel apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL} />
       </main>

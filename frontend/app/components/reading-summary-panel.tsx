@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MarkdownBody } from "@/app/components/markdown-body";
+import { DevNote } from "@/app/components/dev-note";
 import {
   summarizePaper,
   type PaperSummarizeResult,
@@ -105,10 +106,12 @@ export function ReadingSummaryPanel({ apiBaseUrl, paperId }: Props) {
       >
         要約
       </h2>
-      <p className="mt-paper-2 text-sm text-muted-foreground">
-        サーバーが PDF からテキストを抜き出し、日本語の構造化要約を返します（
-        <code className="font-mono text-foreground">POST /v1/papers/…/summarize</code>）。
-      </p>
+      <DevNote>
+        <p className="mt-paper-2 text-sm text-muted-foreground">
+          サーバーが PDF からテキストを抜き出し、日本語の構造化要約を返します（
+          <code className="font-mono text-foreground">POST /v1/papers/…/summarize</code>）。
+        </p>
+      </DevNote>
 
       <div className="mt-paper-3">
         <button
