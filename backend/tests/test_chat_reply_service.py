@@ -23,6 +23,20 @@ class EchoCompleter:
                 return f"echo:{content}"
         return "echo:"
 
+    def converse_with_vision(
+        self,
+        *,
+        system: str | None,
+        messages: list[ChatTurn],
+        image_pngs: list[bytes],
+    ) -> str:
+        _ = system
+        _ = image_pngs
+        for role, content in reversed(messages):
+            if role == "user":
+                return f"echo:{content}"
+        return "echo:"
+
 
 class EmptyCompleter:
     def converse(
@@ -31,6 +45,18 @@ class EmptyCompleter:
         system: str | None,
         messages: list[ChatTurn],
     ) -> str:
+        return ""
+
+    def converse_with_vision(
+        self,
+        *,
+        system: str | None,
+        messages: list[ChatTurn],
+        image_pngs: list[bytes],
+    ) -> str:
+        _ = system
+        _ = image_pngs
+        _ = messages
         return ""
 
 

@@ -19,6 +19,18 @@ class PaperNotFoundError(PaperStoreError):
     """該当ファイルなし。"""
 
 
+class PaperPageOutOfRangeError(PaperStoreError):
+    """ページ番号が PDF のページ数の範囲外。"""
+
+
+class PaperPageImageTooLargeError(PaperStoreError):
+    """ページ画像レンダリング結果がピクセル上限を超えた。"""
+
+
+class PaperVisionRectError(PaperStoreError):
+    """Vision 用の image_px 矩形がページ画像の範囲外、または不正。"""
+
+
 class PaperFetchDisabledError(PaperStoreError):
     """設定で fetch が無効。"""
 

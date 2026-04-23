@@ -5,14 +5,26 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-import { ReadingChatPanel } from "@/app/components/reading-chat-panel";
+import {
+  PaperPageFigureSelection,
+  type FigureImagePxRect,
+} from "@/app/components/paper-page-figure-selection";
+import { ReadingChatPanel, type VisionFigureRef } from "@/app/components/reading-chat-panel";
 import { ReadingSummaryPanel } from "@/app/components/reading-summary-panel";
 import { normalizeApiBaseUrl } from "@/lib/api/health";
+import {
+  getConfiguredChatVisionMaxFigures,
+  getConfiguredPaperPageImageScale,
+} from "@/lib/api/paper-pages";
 import { uploadPaper } from "@/lib/api/papers";
 import { PDF_READING_DOCUMENT_OPTIONS } from "@/lib/pdf/document-options";
 import { isValidPdfPageCount } from "@/lib/pdf/page-number";
 
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+// pdfjs の API 本体と同一バージョンの worker を参照する（public への手動コピーよりズレにくい）
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 
 const DEFAULT_PDF = "/sample.pdf";
 const ZOOM_STEP = 0.15;
@@ -44,6 +56,12 @@ export function ReadingClient({ apiBaseUrl }: Props) {
   /** 1-based、react-pdf の pageNumber prop と一致 */
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
+  /** 図・表矩形ドラフト（`GET .../pages/{page}/image` の image_px）。確定後は参照スタックへ追加 */
+  const [figureRect, setFigureRect] = useState<FigureImagePxRect | null>(null);
+  /** フェーズ D: Vision 送信単位のスタック（ページ・矩形は各要素に保持） */
+  const [figureSelections, setFigureSelections] = useState<VisionFigureRef[]>([]);
+  const [figSelectMode, setFigSelectMode] = useState(false);
+  const pageImageScale = getConfiguredPaperPageImageScale();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [docLoading, setDocLoading] = useState(true);
@@ -66,6 +84,8 @@ export function ReadingClient({ apiBaseUrl }: Props) {
       blobUrlRef.current = url;
       setSource({ kind: "blob", url });
       setPaperId(null);
+      setFigureRect(null);
+      setFigureSelections([]);
       setPageNumber(1);
       setNumPages(null);
       setLoadError(null);
@@ -116,6 +136,8 @@ export function ReadingClient({ apiBaseUrl }: Props) {
 
     const id = res.data.paper_id;
     setPaperId(id);
+    setFigureRect(null);
+    setFigureSelections([]);
     setSource({ kind: "url", url: `${base}/v1/papers/${id}/file` });
     setPageNumber(1);
     setNumPages(null);
@@ -163,6 +185,8 @@ export function ReadingClient({ apiBaseUrl }: Props) {
   const resetToSample = () => {
     revokeBlob();
     setPaperId(null);
+    setFigureRect(null);
+    setFigureSelections([]);
     setPaperExcerpt("");
     setSelectionNotice(null);
     setSource({ kind: "url", url: DEFAULT_PDF });
@@ -179,6 +203,8 @@ export function ReadingClient({ apiBaseUrl }: Props) {
       setDocLoading(false);
       return;
     }
+    setFigureRect(null);
+    setFigureSelections([]);
     setNumPages(n);
     setPageNumber((p) => Math.min(p, n));
     setLoadError(null);
@@ -190,12 +216,55 @@ export function ReadingClient({ apiBaseUrl }: Props) {
     setDocLoading(false);
   };
 
-  const goPrev = () => setPageNumber((p) => Math.max(1, p - 1));
-  const goNext = () =>
+  const goPrev = () => {
+    setFigureRect(null);
+    setFigureSelections([]);
+    setPageNumber((p) => Math.max(1, p - 1));
+  };
+  const goNext = () => {
+    setFigureRect(null);
+    setFigureSelections([]);
     setPageNumber((p) => (numPages != null ? Math.min(numPages, p + 1) : p));
+  };
 
   const zoomOut = () => setScale((s) => Math.max(ZOOM_MIN, Math.round((s - ZOOM_STEP) * 100) / 100));
   const zoomIn = () => setScale((s) => Math.min(ZOOM_MAX, Math.round((s + ZOOM_STEP) * 100) / 100));
+
+  const figStackMax = getConfiguredChatVisionMaxFigures();
+
+  const handleAddFigureToStack = useCallback(
+    (payload: { rect: FigureImagePxRect; figureLabel: string | null }) => {
+      if (figureSelections.length >= figStackMax) {
+        setSelectionNotice(`参照は最大 ${figStackMax} 件までです。`);
+        return;
+      }
+      setSelectionNotice(null);
+      const id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `fig-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setFigureSelections((prev) => [
+        ...prev,
+        {
+          id,
+          page: pageNumber,
+          scale: pageImageScale,
+          rect: payload.rect,
+          ...(payload.figureLabel ? { figureLabel: payload.figureLabel } : {}),
+        },
+      ]);
+      setFigureRect(null);
+    },
+    [figStackMax, figureSelections.length, pageNumber, pageImageScale],
+  );
+
+  const toggleFigSelectMode = () => {
+    setFigSelectMode((prev) => {
+      const next = !prev;
+      if (!next) setFigureRect(null);
+      return next;
+    });
+  };
 
   const applySelectionToChat = () => {
     const text = getPdfSelectionText(pdfAreaRef.current);
@@ -306,9 +375,23 @@ export function ReadingClient({ apiBaseUrl }: Props) {
             <span className="text-sm text-muted-foreground">{Math.round(scale * 100)}%</span>
             <button
               type="button"
+              className={`min-h-11 rounded-md border px-paper-3 text-sm font-medium ${
+                figSelectMode
+                  ? "border-primary-600 bg-primary-600 text-white hover:bg-primary-700"
+                  : "border-border-subtle bg-background hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              }`}
+              onClick={toggleFigSelectMode}
+              disabled={!!loadError}
+              aria-pressed={figSelectMode}
+              title="サーバーが返すページ画像上でドラッグして図・表の範囲を指定します（image_px）"
+            >
+              図・表を選択
+            </button>
+            <button
+              type="button"
               className="ml-auto min-h-11 rounded-md border border-border-subtle bg-primary-600 px-paper-3 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={applySelectionToChat}
-              disabled={!!loadError}
+              disabled={!!loadError || figSelectMode}
               title="テキストレイヤーで選択した範囲を Q&A の文脈に載せます"
             >
               選択範囲について聞く
@@ -318,6 +401,12 @@ export function ReadingClient({ apiBaseUrl }: Props) {
           {selectionNotice ? (
             <p className="border-b border-border-subtle bg-amber-50 px-paper-3 py-paper-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100" role="status" aria-live="polite">
               {selectionNotice}
+            </p>
+          ) : null}
+
+          {figSelectMode ? (
+            <p className="border-b border-border-subtle bg-neutral-100/90 px-paper-3 py-paper-2 text-xs text-muted-foreground dark:bg-neutral-900/60" role="status">
+              図・表選択モード: 表示は API のページ画像（scale={pageImageScale}）です。ドラッグで矩形を確定すると切り抜きプレビューが表示されます。
             </p>
           ) : null}
 
@@ -348,7 +437,21 @@ export function ReadingClient({ apiBaseUrl }: Props) {
             ) : null}
 
             <div className="flex justify-center p-paper-4">
-              {!loadError ? (
+              {!loadError && figSelectMode ? (
+                <PaperPageFigureSelection
+                  key={`${paperId ?? "local"}-${pageNumber}-${pageImageScale}`}
+                  apiBaseUrl={apiBaseUrl}
+                  paperId={paperId}
+                  page={pageNumber}
+                  imageScale={pageImageScale}
+                  rect={figureRect}
+                  onRectChange={setFigureRect}
+                  onAddToStack={handleAddFigureToStack}
+                  stackSelectionCount={figureSelections.length}
+                  stackMax={figStackMax}
+                />
+              ) : null}
+              {!loadError && !figSelectMode ? (
                 <Document
                   key={source.url}
                   file={source.url}
@@ -388,6 +491,14 @@ export function ReadingClient({ apiBaseUrl }: Props) {
               paperExcerpt={paperExcerpt}
               currentPage={pageNumber}
               onClearExcerpt={() => setPaperExcerpt("")}
+              visionSelections={figureSelections}
+              onRemoveVisionSelection={(id) =>
+                setFigureSelections((prev) => prev.filter((s) => s.id !== id))
+              }
+              onClearVisionStack={() => {
+                setFigureSelections([]);
+                setFigureRect(null);
+              }}
             />
           </div>
         </aside>

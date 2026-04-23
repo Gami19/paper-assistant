@@ -23,12 +23,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     origins = settings.cors_origin_list()
     if origins:
+        # ブラウザの fetch は CORS でカスタムレスポンスヘッダを既定で読めない。
+        # GET .../pages/{page}/image の X-Paper-* をフロント（paper-pages.ts）が参照するため公開する。
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
             allow_credentials=False,
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Accept", "Content-Type", "Authorization"],
+            expose_headers=[
+                "X-Paper-Page",
+                "X-Paper-Scale",
+                "X-Paper-Width",
+                "X-Paper-Height",
+            ],
         )
 
     @app.get("/")
