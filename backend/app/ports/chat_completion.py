@@ -19,3 +19,13 @@ class ChatCompleter(Protocol):
     ) -> str:
         """system は任意。messages は user で始まり user で終わる交互ターンを想定。"""
         ...
+
+    def converse_with_vision(
+        self,
+        *,
+        system: str | None,
+        messages: list[ChatTurn],
+        image_pngs: list[bytes],
+    ) -> str:
+        """最終ターンは user。画像はその user ターンに順に付与し、最後にテキスト（Bedrock Converse）。"""
+        ...

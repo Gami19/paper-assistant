@@ -12,6 +12,20 @@ class ChatMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
 
 
+def validate_alternating_chat_messages(msgs: list[ChatMessageIn]) -> None:
+    """user で始まり user で終わり、交互ターン。"""
+    if msgs[0].role != "user":
+        msg = "messages must start with a user turn"
+        raise ValueError(msg)
+    if msgs[-1].role != "user":
+        msg = "messages must end with a user turn"
+        raise ValueError(msg)
+    for i in range(1, len(msgs)):
+        if msgs[i].role == msgs[i - 1].role:
+            msg = "messages must alternate user and assistant"
+            raise ValueError(msg)
+
+
 class ChatRequest(BaseModel):
     messages: list[ChatMessageIn] = Field(min_length=1, max_length=50)
     paper_excerpt: str | None = Field(
@@ -22,17 +36,7 @@ class ChatRequest(BaseModel):
 
     @model_validator(mode="after")
     def alternating_user_assistant(self) -> Self:
-        msgs = self.messages
-        if msgs[0].role != "user":
-            msg = "messages must start with a user turn"
-            raise ValueError(msg)
-        if msgs[-1].role != "user":
-            msg = "messages must end with a user turn"
-            raise ValueError(msg)
-        for i in range(1, len(msgs)):
-            if msgs[i].role == msgs[i - 1].role:
-                msg = "messages must alternate user and assistant"
-                raise ValueError(msg)
+        validate_alternating_chat_messages(self.messages)
         return self
 
 

@@ -43,6 +43,8 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 `ENVIRONMENT=production` かつ `CORS_ALLOW_ORIGINS` が空だと **起動時に失敗**する（設定ミス検出）。詳細は [ADR-005](../docs/adr/ADR-005-cors-allowlist.md)。
 
+ブラウザから `GET .../pages/{page}/image` を直接 `fetch` する場合、カスタムヘッダ **`X-Paper-*` は `Access-Control-Expose-Headers` で公開**しないとクライアントが読めない（`main.py` の `CORSMiddleware` で指定）。
+
 ### BE-2（M2 チャット最小）
 
 | 変数 | 必須 | 説明 |
@@ -52,8 +54,11 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | `BEDROCK_MODEL_ID` | **production でモック OFF のとき必須** | 例: `anthropic.claude-3-5-haiku-20241022-v1:0`。空のまま本番・非モックだと起動失敗。 |
 | `BEDROCK_CONNECT_TIMEOUT_SECONDS` | いいえ | boto3 の接続タイムアウト秒（既定 `10`、1〜300）。 |
 | `BEDROCK_READ_TIMEOUT_SECONDS` | いいえ | boto3 の読み取りタイムアウト秒（既定 `120`、1〜600）。長文推論では増やす余地あり。 |
+| `CHAT_VISION_MAX_FIGURES` | いいえ | `POST /v1/chat/vision` の **selections 最大件数**（既定 `3`、1〜10）。超過時 **422**（`Too many figure selections`）。 |
 
 **エンドポイント**: `POST /v1/chat` — リクエスト JSON は `{ "messages": [ { "role": "user"|"assistant", "content": "…" }, … ], "paper_excerpt": "…"（任意） }`（先頭は `user`、交互などバリデーションあり）、レスポンスは `{ "role": "assistant", "content": "…" }`。プロンプト全文・抜粋本文はログに出さない。
+
+**Vision（フェーズ C / D）**: `POST /v1/chat/vision` — `{ "messages": …, "paper_id": UUID, "selections": [ { "page": 1-based, "scale": 数値（GET …/pages/{page}/image と同一）, "rect": { "x","y","w","h", "unit":"image_px" }, "figure_label": 任意 }, … ] }`（`selections` は 1 件以上、スキーマ上は最大 10 件まで受け付け、**環境変数 `CHAT_VISION_MAX_FIGURES` 以下**でなければならない）。サーバーは **参照ページごとに ±1 本文**をマージし、**各 selection ごとの矩形クロップ PNG**（順序は `selections` 順）を Bedrock **Converse** に **複数画像の後に最終 user テキスト**で送る。**`BEDROCK_MODEL_ID` はマルチモーダル対応**（例: Claude 3 系）を前提とする（テキスト専用 ID では `ValidationException` になり得る）。依存に **`pillow`**（`requirements.txt`）。モック時は `[mock] vision:…`。
 
 **ローカル E2E（モック）**:
 
@@ -78,6 +83,10 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | `PAPER_FETCH_MAX_BYTES` | いいえ | fetch 応答ボディ上限（既定約 20MB）。 |
 | `PAPER_FETCH_HOST_ALLOWLIST` | いいえ | 空=HTTPS・IP 検査のみ。非空=カンマ区切りの許可ホスト（サフィックス一致）。 |
 | `PAPER_GC_MAX_AGE_SECONDS` | いいえ | 保存成功後に **これより古い mtime の `*.pdf` を削除**（既定 86400 秒）。 |
+| `PAPER_PAGE_IMAGE_SCALE_MIN` | いいえ | `GET .../pages/{page}/image` の `scale` クエリ下限（既定 `0.5`）。 |
+| `PAPER_PAGE_IMAGE_SCALE_MAX` | いいえ | 同上・上限（既定 `4.0`）。 |
+| `PAPER_PAGE_IMAGE_MAX_PIXELS` | いいえ | 1 ページ pixmap の `width*height` 上限。超過時 **413**（既定 25_000_000）。 |
+| `PAPER_PAGE_NEIGHBOR_TEXT_MAX_CHARS` | いいえ | `GET .../text?context=pm1` の結合テキスト最大文字数（既定 120_000）。 |
 
 ### BE-5（M5 MVP：抽出・要約・マルチターン）
 
@@ -92,6 +101,8 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - `GET /v1/papers/{paper_id}/file` — `application/pdf`（`paper_id` は UUID）。**ブラウザの `react-pdf` から CORS 付き GET で読む**想定。
 - `POST /v1/papers/{paper_id}/summarize` — 保存 PDF からテキスト抽出し、構造化要約（日本語フィールド）を JSON で返す。長大 PDF は切り詰め後に要約（`truncated_source: true`）。
 - `POST /v1/papers/fetch` — JSON `{ "url": "https://..." }`。**リダイレクトは追従しない**（[ADR-007](../docs/adr/ADR-007-be3-paper-pdf-local-storage.md)）。
+- `GET /v1/papers/{paper_id}/pages/{page}/image` — クエリ **`scale`**（既定 `2.0`、設定の min/max でクランプ）。**PNG**（`image/png`）。レスポンスヘッダに `X-Paper-Page`, `X-Paper-Scale`, `X-Paper-Width`, `X-Paper-Height`。**PyMuPDF** でレンダリング。
+- `GET /v1/papers/{paper_id}/pages/{page}/text` — クエリ **`context`**: `page`（単ページ）または `pm1`（対象ページ ±1 を結合）。JSON: `text`, `page`, `total_pages`, `pages_included`, `truncated`。
 
 **ローカル curl（アップロード→取得）**:
 
@@ -122,7 +133,7 @@ curl -sS -o out.pdf http://127.0.0.1:8000/v1/papers/<paper_id>/file
 
 | ファイル | 用途 |
 |----------|------|
-| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic / httpx / python-multipart / boto3） |
+| `requirements.txt` | 本番（FastAPI / Uvicorn / Pydantic / httpx / python-multipart / boto3 / pypdf / pymupdf） |
 | `requirements-dev.txt` | 開発（pytest / httpx / pyright） |
 
 ## 参照

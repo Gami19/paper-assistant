@@ -1,8 +1,13 @@
 """HTTP 契約と CORS の振る舞い（実装詳細ではなく観察可能な結果）。"""
 
+from __future__ import annotations
+
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from pypdf import PdfWriter
 
 from app.main import create_app
 from app.settings import Settings
@@ -99,6 +104,49 @@ def test_options_preflight_allowed_origin(client_cors_localhost: TestClient) -> 
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://127.0.0.1:3000"
+
+
+def test_cors_expose_headers_lists_x_paper_for_browser_image_fetch(
+    tmp_path: Path,
+) -> None:
+    """ブラウザは Access-Control-Expose-Headers に無いレスポンスヘッダを読めない（カスタム X-Paper-*）。"""
+    settings = Settings(
+        environment="development",
+        cors_allow_origins="http://localhost:3000",
+        chat_mock_mode=True,
+        papers_storage_dir=tmp_path / "papers",
+        paper_max_upload_bytes=1024 * 1024,
+        paper_fetch_enabled=True,
+        paper_fetch_max_bytes=1024 * 1024,
+        paper_fetch_timeout_seconds=5.0,
+        paper_fetch_host_allowlist="",
+        paper_gc_max_age_seconds=3600,
+    )
+    client = TestClient(create_app(settings))
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    pdf_path = tmp_path / "one.pdf"
+    with pdf_path.open("wb") as f:
+        writer.write(f)
+    pdf_bytes = pdf_path.read_bytes()
+
+    up = client.post("/v1/papers/upload", files={"file": ("t.pdf", pdf_bytes, "application/pdf")})
+    assert up.status_code == 200
+    paper_id = up.json()["paper_id"]
+
+    r = client.get(
+        f"/v1/papers/{paper_id}/pages/1/image",
+        params={"scale": 1.0},
+        headers={"Origin": "http://localhost:3000"},
+    )
+    assert r.status_code == 200
+    expose = r.headers.get("access-control-expose-headers") or ""
+    lowered = expose.lower()
+    assert "x-paper-page" in lowered
+    assert "x-paper-scale" in lowered
+    assert "x-paper-width" in lowered
+    assert "x-paper-height" in lowered
 
 
 def test_options_preflight_post_chat_allowed(client_cors_localhost: TestClient) -> None:

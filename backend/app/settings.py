@@ -54,6 +54,12 @@ class Settings(BaseSettings):
         le=600,
         description="Bedrock boto3 read timeout (seconds)",
     )
+    chat_vision_max_figures: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max selections per POST /v1/chat/vision (Phase D)",
+    )
 
     # --- BE-3（M3 論文 PDF）---
     papers_storage_dir: Path = Field(
@@ -105,6 +111,31 @@ class Settings(BaseSettings):
         le=500_000,
         description="Max characters of extracted plain text before truncation",
     )
+    # --- ページ画像・ページ本文（Phase A / Fig 文脈用）---
+    paper_page_image_scale_min: float = Field(
+        default=0.5,
+        ge=0.25,
+        le=8.0,
+        description="Min scale query for GET .../pages/{page}/image",
+    )
+    paper_page_image_scale_max: float = Field(
+        default=4.0,
+        ge=0.5,
+        le=16.0,
+        description="Max scale query for GET .../pages/{page}/image",
+    )
+    paper_page_image_max_pixels: int = Field(
+        default=25_000_000,
+        ge=100_000,
+        le=100_000_000,
+        description="Max width*height for rendered page pixmap (OOM guard)",
+    )
+    paper_page_neighbor_text_max_chars: int = Field(
+        default=120_000,
+        ge=1_000,
+        le=500_000,
+        description="Max chars for pm1 combined page text",
+    )
 
     @field_validator("papers_storage_dir", mode="before")
     @classmethod
@@ -115,6 +146,13 @@ class Settings(BaseSettings):
                 return _default_papers_storage_dir()
             return Path(stripped).expanduser()
         return v
+
+    @model_validator(mode="after")
+    def paper_page_image_scale_order(self) -> Self:
+        if self.paper_page_image_scale_min > self.paper_page_image_scale_max:
+            msg = "PAPER_PAGE_IMAGE_SCALE_MIN must be <= PAPER_PAGE_IMAGE_SCALE_MAX"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def production_requires_cors_origins(self) -> Self:

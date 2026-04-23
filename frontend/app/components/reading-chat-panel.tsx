@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MarkdownBody } from "@/app/components/markdown-body";
 import { DevNote } from "@/app/components/dev-note";
+import type { FigureImagePxRect } from "@/app/components/paper-page-figure-selection";
 import {
   fetchChatReply,
+  fetchChatVisionReply,
   type ChatMessage,
   type ChatReplyResult,
 } from "@/lib/api/chat";
+import { fetchPaperPageText } from "@/lib/api/paper-pages";
 
 const DOHERTY_MS = 400;
 
@@ -82,14 +85,34 @@ function errorHelpText(state: Extract<UiState, { phase: "error" }>): string {
   }
 }
 
+/** フェーズ D: 参照スタックの 1 要素（`id` は UI 用） */
+export type VisionFigureRef = {
+  id: string;
+  page: number;
+  scale: number;
+  rect: FigureImagePxRect;
+  figureLabel?: string;
+};
+
+type PagePreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ok"; text: string; truncated: boolean }
+  | { status: "error"; message: string };
+
 type Props = {
   apiBaseUrl: string | undefined;
   /** アップロード済み論文があるときのみチャット推奨（null でも送信は可能） */
   paperId: string | null;
-  /** 選択テキスト等。リクエストの paper_excerpt に載せる */
+  /** 選択テキスト等。リクエストの paper_excerpt に載せる（Vision 送信時は使わない） */
   paperExcerpt: string;
   currentPage: number;
   onClearExcerpt: () => void;
+  /** 1 件以上で `POST /v1/chat/vision`（selections 配列） */
+  visionSelections: VisionFigureRef[];
+  onRemoveVisionSelection: (id: string) => void;
+  /** 会話クリア時に参照スタックも捨てる */
+  onClearVisionStack?: () => void;
 };
 
 export function ReadingChatPanel({
@@ -98,12 +121,21 @@ export function ReadingChatPanel({
   paperExcerpt,
   currentPage,
   onClearExcerpt,
+  visionSelections,
+  onRemoveVisionSelection,
+  onClearVisionStack,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [ui, setUi] = useState<UiState>({ phase: "idle" });
   const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const [pageTextPreview, setPageTextPreview] = useState<Record<number, PagePreviewState>>({});
+
+  const useVision = Boolean(paperId && visionSelections.length > 0);
+  const previewPagesKey = [...new Set(visionSelections.map((s) => s.page))]
+    .sort((a, b) => a - b)
+    .join(",");
 
   const clearDelayTimer = useCallback(() => {
     if (delayTimerRef.current !== null) {
@@ -117,6 +149,50 @@ export function ReadingChatPanel({
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, ui]);
+
+  useEffect(() => {
+    if (!paperId || visionSelections.length === 0) {
+      setPageTextPreview({});
+      return;
+    }
+    const pages = [...new Set(visionSelections.map((s) => s.page))].sort((a, b) => a - b);
+    let cancelled = false;
+    void (async () => {
+      const loading: Record<number, PagePreviewState> = {};
+      for (const p of pages) loading[p] = { status: "loading" };
+      setPageTextPreview(loading);
+      for (const p of pages) {
+        const res = await fetchPaperPageText(apiBaseUrl, paperId, p, "pm1");
+        if (cancelled) return;
+        if (res.kind === "ok") {
+          setPageTextPreview((prev) => ({
+            ...prev,
+            [p]: {
+              status: "ok",
+              text: res.data.text,
+              truncated: res.data.truncated,
+            },
+          }));
+        } else {
+          const msg =
+            res.kind === "missing_base_url"
+              ? "API の基底 URL が未設定です。"
+              : res.kind === "network_error"
+                ? res.message
+                : res.kind === "http_error"
+                  ? `HTTP ${res.status}`
+                  : res.detail;
+          setPageTextPreview((prev) => ({
+            ...prev,
+            [p]: { status: "error", message: msg },
+          }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, paperId, previewPagesKey]);
 
   const send = async () => {
     const trimmed = input.trim();
@@ -132,9 +208,19 @@ export function ReadingChatPanel({
       );
     }, DOHERTY_MS);
 
-    const result = await fetchChatReply(apiBaseUrl, nextMessages, undefined, {
-      paperExcerpt: paperExcerpt.trim() || null,
-    });
+    const result: ChatReplyResult = useVision
+      ? await fetchChatVisionReply(apiBaseUrl, nextMessages, {
+          paper_id: paperId!,
+          selections: visionSelections.map((s) => ({
+            page: s.page,
+            scale: s.scale,
+            rect: s.rect,
+            figure_label: s.figureLabel ?? null,
+          })),
+        })
+      : await fetchChatReply(apiBaseUrl, nextMessages, undefined, {
+          paperExcerpt: paperExcerpt.trim() || null,
+        });
 
     clearDelayTimer();
 
@@ -163,6 +249,7 @@ export function ReadingChatPanel({
       setUi({ phase: "idle" });
     }
     onClearExcerpt();
+    onClearVisionStack?.();
   };
 
   return (
@@ -178,7 +265,18 @@ export function ReadingChatPanel({
       </h2>
       <DevNote>
         <p className="mt-paper-2 text-sm text-muted-foreground">
-          会話履歴ごと <code className="font-mono text-foreground">POST /v1/chat</code> に送信します。
+          {useVision ? (
+            <>
+              会話履歴ごと{" "}
+              <code className="font-mono text-foreground">POST /v1/chat/vision</code>{" "}
+              に送信します（参照スタック順に複数 PNG と ±1 本文をサーバーが合成）。
+            </>
+          ) : (
+            <>
+              会話履歴ごと{" "}
+              <code className="font-mono text-foreground">POST /v1/chat</code> に送信します。
+            </>
+          )}{" "}
           現在の表示ページは <span className="font-medium text-foreground">{currentPage}</span> です。
           {paperId ? null : (
             <span className="mt-1 block text-semantic-warning">
@@ -187,6 +285,84 @@ export function ReadingChatPanel({
           )}
         </p>
       </DevNote>
+
+      {paperId && !useVision ? (
+        <p className="mt-paper-2 max-w-[65ch] text-xs text-muted-foreground" role="note">
+          図・表について質問するには、ツールバーの「図・表を選択」で範囲を確定し、「参照に追加」でスタックに載せてください（
+          <code className="font-mono text-foreground">image_px</code> と同一{" "}
+          <code className="font-mono text-foreground">scale</code>）。
+        </p>
+      ) : null}
+
+      {useVision && visionSelections.length > 0 ? (
+        <div className="mt-paper-3 flex flex-wrap items-center gap-paper-2" aria-label="図参照スタック">
+          <span className="text-xs font-medium text-muted-foreground">参照:</span>
+          {visionSelections.map((s, i) => (
+            <span
+              key={s.id}
+              className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-background px-paper-2 py-1 text-xs text-foreground"
+            >
+              <span>
+                （ページ {s.page}）#{i + 1}
+                {s.figureLabel ? (
+                  <span className="text-muted-foreground"> · {s.figureLabel}</span>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                className="rounded px-1 text-muted-foreground hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-700"
+                onClick={() => onRemoveVisionSelection(s.id)}
+                aria-label={`参照 ${i + 1} を削除`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {useVision && paperId && visionSelections.length > 0 ? (
+        <details className="mt-paper-2 rounded-md border border-border-subtle bg-background p-paper-3">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            本文プレビュー（±1 ページ）
+          </summary>
+          <div className="mt-paper-3 space-y-paper-3 text-xs text-muted-foreground">
+            {[...new Set(visionSelections.map((s) => s.page))]
+              .sort((a, b) => a - b)
+              .map((p) => {
+                const st = pageTextPreview[p] ?? { status: "idle" as const };
+                return (
+                  <div key={p}>
+                    <p className="font-medium text-foreground">中心ページ {p}</p>
+                    {st.status === "loading" || st.status === "idle" ? (
+                      <p className="mt-1 text-muted-foreground">読み込み中…</p>
+                    ) : null}
+                    {st.status === "error" ? (
+                      <p className="mt-1 text-semantic-danger" role="alert">
+                        {st.message}
+                      </p>
+                    ) : null}
+                    {st.status === "ok" ? (
+                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-border-subtle bg-neutral-50 p-paper-2 text-[0.8rem] leading-snug text-foreground dark:bg-neutral-900/50">
+                        {st.text || "（本文なし）"}
+                        {st.truncated ? (
+                          <span className="block pt-1 text-semantic-warning">（サーバー側で切り詰め済み）</span>
+                        ) : null}
+                      </pre>
+                    ) : null}
+                  </div>
+                );
+              })}
+          </div>
+        </details>
+      ) : null}
+
+      {useVision && paperExcerpt.trim() ? (
+        <p className="mt-paper-2 max-w-[65ch] text-xs text-amber-900 dark:text-amber-100/90" role="status">
+          図参照モードではテキスト抜粋（<code className="font-mono">paper_excerpt</code>
+          ）は送信されません。本文はサーバーが付与します。
+        </p>
+      ) : null}
 
       {paperExcerpt.trim() ? (
         <div className="mt-paper-3 flex flex-wrap items-start gap-paper-2 rounded-md border border-primary-200 bg-primary-50/80 p-paper-3 dark:border-primary-900 dark:bg-primary-950/40">

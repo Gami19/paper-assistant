@@ -22,6 +22,8 @@ npm run dev
 | 変数 | 公開範囲 | 説明 |
 |------|----------|------|
 | `NEXT_PUBLIC_API_BASE_URL` | ブラウザ可 | バックエンド API の基底 URL（末尾スラッシュの有無は正規化される） |
+| `NEXT_PUBLIC_DEBUG_FIG_RECT` | ブラウザ可 | `true` のとき、`/read` の図・表矩形選択で API 画像と `naturalWidth/Height` の一致（OK/NG）などを表示（開発用） |
+| `NEXT_PUBLIC_PAPER_PAGE_IMAGE_SCALE` | ブラウザ可 | 任意。`GET /v1/papers/{id}/pages/{page}/image?scale=` に送る値。未設定時は **2**（バックエンド既定と一致させること） |
 | `COST_ADMIN_BEARER` | **サーバのみ** | 運用コスト API（`GET`/`PUT`）と `/admin/cost` の保存で共用。`NEXT_PUBLIC_` **禁止**（[ADR-002](../docs/adr/ADR-002-cost-api-nextjs-route-handler.md)） |
 | `COST_DATA_FILE` | **サーバのみ** | 任意。コスト JSON の保存パス。未設定時は `frontend/.data/cost-state.json`（`.gitignore` 対象） |
 
@@ -70,6 +72,9 @@ curl -sS -X POST -H "Authorization: Bearer YOUR_TOKEN" \
 - **`GET /health` の JSON 契約**は **`lib/api/health.ts` の Zod スキーマ**を唯一の正とする（別ファイルで同じ形を手書きしない）。
 - **`POST /v1/chat` の JSON 契約**は **`lib/api/chat.ts` の Zod スキーマ**を唯一の正とする（`messages` 複数ターン・任意 `paper_excerpt` を含む）。
 - **`POST /v1/papers/upload`** および **`POST /v1/papers/{paper_id}/summarize`** の JSON 契約は **`lib/api/papers.ts` の Zod スキーマ**を唯一の正とする。
+- **ページ画像 `GET /v1/papers/{paper_id}/pages/{page}/image`** の呼び出し・`X-Paper-*` ヘッダの解釈は **`lib/api/paper-pages.ts`** を正とする（PNG Blob・ヘッダ検証）。
+- **`POST /v1/chat/vision`** のリクエスト形・応答形は **`lib/api/chat.ts`** の `fetchChatVisionReply` / `ChatVisionRequestPayload`（**`selections` 配列**）を正とする（応答 JSON は `POST /v1/chat` と同一）。
+- **ページ本文プレビュー**（±1）用の **`GET /v1/papers/.../pages/{page}/text?context=pm1`** は **`lib/api/paper-pages.ts`** の `fetchPaperPageText` を正とする。
 - バックエンドの応答形を変える場合は、**FastAPI・pytest・上記 Zod**を同じ PR で更新する。
 
 ## バックエンド疎通（M1）
@@ -86,6 +91,26 @@ curl -sS -X POST -H "Authorization: Bearer YOUR_TOKEN" \
 2. 既定の **`public/sample.pdf`** は最小限の 1 ページ PDF。差し替え可。
 3. 開発サーバーで **[http://localhost:3000/read](http://localhost:3000/read)** を開き、**PDF を主表示・要約＋ Q&A を右（狭い画面では下）** を確認する。
 4. **`PDF を開く（アップロード）`** で選んだファイルは **`POST /v1/papers/upload`** へ送られ、返却 `paper_id` で **`GET …/v1/papers/{id}/file`** を `react-pdf` に読ませる。**要約**は **`POST /v1/papers/{id}/summarize`**、**Q&A** は会話履歴つき **`POST /v1/chat`**（任意で **`paper_excerpt`** に PDF 上の選択テキスト）。サンプル／URL から開いただけの場合は `paper_id` が無いため要約は無効・チャットは警告付きで利用可能。
+
+### 図・表の矩形選択（フェーズ B / Step 3）
+
+1. バックエンドが **ページ画像 API**（`GET …/pages/{page}/image`）を提供していること（[backend/README.md](../backend/README.md)）。
+2. **`図・表を選択`** を押すと、メイン表示が **API が返すページ PNG**（`NEXT_PUBLIC_PAPER_PAGE_IMAGE_SCALE`、既定 **2**）に切り替わり、ドラッグで **image_px** の矩形と **切り抜きプレビュー**が得られます。`react-pdf` の表示ズームとは独立した座標系です。
+3. 任意で **`NEXT_PUBLIC_DEBUG_FIG_RECT=true`** とし、`X-Paper-Width` / `Height` とブラウザの `naturalWidth` / `Height` が一致するか確認します（設計メモ §9）。
+4. ブラウザから API を直接叩くため、**`CORS_ALLOW_ORIGINS`** にフロントのオリジンを含めてください。
+
+### 図・表 Vision Q&A（フェーズ C / Step 4）
+
+1. アップロード済み `paper_id` で **図・表の矩形が参照スタックに 1 件以上**あると、論文 Q&A は **`POST /v1/chat/vision`** に送信されます（本文 ±1 とクロップ画像はサーバー側で合成）。
+2. **`scale`** はページ画像 API と同じ値（`NEXT_PUBLIC_PAPER_PAGE_IMAGE_SCALE`）にしてください。
+3. バックエンドの **`BEDROCK_MODEL_ID`** は **画像入力に対応したモデル**が必要です。
+
+### 参照スタック・Fig 上限・本文プレビュー（フェーズ D / Step 5）
+
+1. 図選択モードで矩形を確定したら **「参照に追加」** でスタックに載せます（任意の **図ラベル**、例: Fig.1）。**複数ページ・複数矩形**を同一会話から送れます。
+2. 参照数の上限は **`CHAT_VISION_MAX_FIGURES`（バックエンド、既定 3）** と、フロント表示用の **`NEXT_PUBLIC_CHAT_VISION_MAX_FIGURES`（任意、1〜10 にクランプ）** を揃えてください。超過時は UI でブロックし、API は **422** を返します。
+3. チャット欄の **チップ**から参照を削除でき、**「本文プレビュー（±1 ページ）」** は `GET .../text?context=pm1` を読み取り表示します（折りたたみ）。
+4. **ページ移動・論文切替・会話クリア**で参照スタックはリセットされます。
 
 ## チャット試用（M2 / FE-2）
 

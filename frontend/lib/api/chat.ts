@@ -27,6 +27,30 @@ export type ChatReplyResult =
   | { kind: "invalid_json" }
   | { kind: "invalid_body"; detail: string };
 
+/** POST /v1/chat/vision — FastAPI `ChatVisionRequest` と同期。 */
+export type ImagePxRectPayload = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  unit: "image_px";
+};
+
+/** 1 図参照単位 — FastAPI `VisionSelectionIn` と同期。 */
+export type VisionSelectionPayload = {
+  page: number;
+  scale: number;
+  rect: ImagePxRectPayload;
+  figure_label?: string | null;
+};
+
+export type ChatVisionRequestPayload = {
+  messages: ChatMessage[];
+  paper_id: string;
+  /** 1 件以上。順序が画像ブロック順と一致。 */
+  selections: VisionSelectionPayload[];
+};
+
 /** POST /v1/chat のリクエスト JSON（FastAPI `ChatRequest` と同期）。 */
 export type ChatRequestPayload = {
   messages: ChatMessage[];
@@ -51,6 +75,74 @@ export async function fetchChatReply(
     payload.paper_excerpt = excerpt;
   }
   const body = JSON.stringify(payload);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+      body,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Network error";
+    return { kind: "network_error", message };
+  }
+
+  if (!response.ok) {
+    return {
+      kind: "http_error",
+      status: response.status,
+      statusText: response.statusText || "Error",
+    };
+  }
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    return { kind: "invalid_json" };
+  }
+
+  const parsed = chatResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    return {
+      kind: "invalid_body",
+      detail: parsed.error.message,
+    };
+  }
+
+  return { kind: "ok", data: parsed.data };
+}
+
+/** POST /v1/chat/vision — 図・表矩形＋サーバー側 ±1 本文（レスポンスは /v1/chat と同一 JSON）。 */
+export async function fetchChatVisionReply(
+  baseUrl: string | undefined,
+  messages: ChatMessage[],
+  fields: Omit<ChatVisionRequestPayload, "messages">,
+  init?: RequestInit,
+): Promise<ChatReplyResult> {
+  const base = normalizeApiBaseUrl(baseUrl);
+  if (!base) {
+    return { kind: "missing_base_url" };
+  }
+
+  const url = `${base}/v1/chat/vision`;
+  const body = JSON.stringify({
+    messages,
+    paper_id: fields.paper_id,
+    selections: fields.selections.map((s) => ({
+      page: s.page,
+      scale: s.scale,
+      rect: s.rect,
+      figure_label: s.figure_label?.trim() ? s.figure_label.trim() : undefined,
+    })),
+  } satisfies ChatVisionRequestPayload);
 
   let response: Response;
   try {

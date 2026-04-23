@@ -25,6 +25,16 @@ class PaperFetchRequest(BaseModel):
         return v
 
 
+class PaperPageTextResponse(BaseModel):
+    """GET /v1/papers/.../pages/{page}/text の JSON。"""
+
+    text: str = Field(default="")
+    page: int = Field(ge=1, description="リクエストの中心ページ（1-based）")
+    total_pages: int = Field(ge=0)
+    pages_included: list[int] = Field(default_factory=list)
+    truncated: bool = False
+
+
 class PaperSummaryResponse(BaseModel):
     """仕様書 F1-1 に近い構造化要約（BE-5）。"""
 
