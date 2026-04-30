@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cost-explorer": "^3.1035.0",
-    "next": "16.2.3",
+    "next": "^16.2.4",
     "pdfjs-dist": "5.6.205",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -31,13 +31,14 @@
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "^16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.0.0"
   },
   "overrides": {
     "fast-xml-parser": "^5.7.0",
+    "postcss": "^8.5.10",
     "pdfjs-dist": "5.6.205"
   }
 }
